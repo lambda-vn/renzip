@@ -12,6 +12,14 @@ use std::path::Path;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Association {
     /// An application is registered for this type and its program is there.
+    ///
+    /// Only `classify` below ever builds one, and that function is Windows
+    /// only: on Linux and macOS `association_of` always answers `Unknown`,
+    /// so this variant is never produced there. It stays in the enum
+    /// unconditionally because `entry_association` in lib.rs matches all
+    /// four variants and the frontend's contract is one string among four
+    /// on every platform, not three on Linux and macOS.
+    #[allow(dead_code)]
     Runnable,
     /// The registered handler is the desktop's own "open with" picker, which
     /// is how Windows answers for a type nothing claims.
@@ -42,6 +50,7 @@ pub fn association_of(path: &Path) -> Association {
 /// Split from the call that fetches it so the reasoning can be tested; the
 /// system call itself cannot be, since what it returns is whatever the
 /// machine happens to have installed.
+#[cfg(windows)]
 fn classify(executable: Option<&str>) -> Association {
     let Some(executable) = executable else {
         return Association::Unknown;
