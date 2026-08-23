@@ -1,0 +1,77 @@
+{
+  "basic-2.0.rpa": {
+    "entries": {
+      "gui/nested/deep/file.txt": "6e657374656420636f6e74656e740a",
+      "images/bg.png": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+      "script.rpy": "6c6162656c2073746172743a0a202020202248656c6c6f2e220a2020202072657475726e0a"
+    },
+    "version": "RPA-2.0"
+  },
+  "basic-3.0.rpa": {
+    "entries": {
+      "gui/nested/deep/file.txt": "6e657374656420636f6e74656e740a",
+      "images/bg.png": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+      "script.rpy": "6c6162656c2073746172743a0a202020202248656c6c6f2e220a2020202072657475726e0a"
+    },
+    "version": "RPA-3.0"
+  },
+  "basic-3.2.rpa": {
+    "entries": {
+      "gui/nested/deep/file.txt": "6e657374656420636f6e74656e740a",
+      "images/bg.png": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+      "script.rpy": "6c6162656c2073746172743a0a202020202248656c6c6f2e220a2020202072657475726e0a"
+    },
+    "version": "RPA-3.2"
+  },
+  "empty-2.0.rpa": {
+    "entries": {},
+    "version": "RPA-2.0"
+  },
+  "legacy-1.0.rpa": {
+    "entries": {
+      "data.bin": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f606162636465666768696a6b6c6d6e6f707172737475767778797a7b7c7d7e7f808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9fa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebfc0c1c2c3c4c5c6c7c8c9cacbcccdcecfd0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeeff0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+      "old.rpy": "6c6162656c206f6c643a0a2020202072657475726e0a"
+    },
+    "version": "RPA-1.0"
+  },
+  "malicious-3.0.rpa": {
+    "entries": {
+      "harmless.txt": "74686973206f6e652069732066696e650a"
+    },
+    "rejected": [
+      "../../escaped.txt",
+      "/etc/passwd",
+      "C:\\Windows\\System32\\evil.dll",
+      "CON",
+      "bad<char>.txt",
+      "game/nul.txt"
+    ],
+    "version": "RPA-3.0"
+  },
+  "multi-segment-2.0.rpa": {
+    "entries": {
+      "twice.txt": "6669727374"
+    },
+    "multi_segment": [
+      "twice.txt"
+    ],
+    "version": "RPA-2.0"
+  },
+  "out-of-bounds-3.0.rpa": {
+    "entries": {
+      "fits.txt": "73686f7274"
+    },
+    "rejected": [
+      "runs-past-the-end.txt"
+    ],
+    "version": "RPA-3.0"
+  },
+  "prefix-3.0.rpa": {
+    "entries": {
+      "no-prefix.txt": "6e6f6e65206f66206d65",
+      "prefixed.rpy": "232061207072656669786564207363726970740a6c6162656c20613a0a2020202072657475726e0a",
+      "whole-prefix.txt": "616c6c206f66206d65"
+    },
+    "version": "RPA-3.0"
+  }
+}

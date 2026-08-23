@@ -1,0 +1,38 @@
+# Formatting and linting run before a commit, the four checks the README
+# lists under Development.
+# Local hooks on purpose: the toolchain is already installed to build the
+# project, so nothing extra is downloaded to check it.
+repos:
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all --
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: cargo-clippy
+        name: cargo clippy
+        entry: cargo clippy --all-targets --workspace -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
+
+      - id: svelte-check
+        name: svelte-check
+        entry: npm run build
+        language: system
+        files: ^(src/|index\.html|tsconfig\.json|vite\.config\.ts)
+        pass_filenames: false
+
+      # The convention is written down in COMMIT_CONVENTION.md, which says a
+      # hook enforces it. This is that hook, and it checks the shape of the
+      # first line only: the scope table and the 100 character limit are
+      # conventions for a reader, not something a regular expression should
+      # be trusted to police.
+      - id: conventional-commits
+        name: Conventional Commits
+        entry: python scripts/check_commit_msg.py
+        language: system
+        stages: [commit-msg]

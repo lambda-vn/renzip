@@ -1,0 +1,29 @@
+{
+  "name": "renzip",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "CECILL-2.1",
+  "scripts": {
+    "dev": "vite",
+    "build": "svelte-check --tsconfig ./tsconfig.json && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-clipboard-manager": "^2.3.2",
+    "@tauri-apps/plugin-dialog": "^2.7.2"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@tailwindcss/vite": "^4.3.3",
+    "@tauri-apps/cli": "^2.11.4",
+    "svelte": "^5.56.10",
+    "svelte-check": "^4.7.6",
+    "tailwindcss": "^4.3.3",
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.2.2"
+  }
+}

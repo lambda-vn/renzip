@@ -1,0 +1,56 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what happened, what you expected instead.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where
+      options:
+        - Opening an archive
+        - The entry tree (browsing, search, selection)
+        - Preview of an entry
+        - Extraction
+        - Creating an archive
+        - The row menu (extract, copy, open)
+        - Settings or language
+        - Somewhere else
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Archive version
+      description: The header line RenZip reported, if an archive is involved.
+      placeholder: RPA-3.0
+  - type: input
+    id: game
+    attributes:
+      label: Where the archive comes from
+      description: >
+        The game or the tool that produced it, if you can say. Never attach
+        the archive itself: it holds the assets of a game you probably
+        cannot redistribute.
+      placeholder: built by Ren'Py 8.3, or by rpatool
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Windows 11, Ubuntu 24.04, macOS 15
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: What the application reported
+      description: >
+        The status line at the bottom of the window, and the contents of the
+        rejected entries panel if it appeared.
+      render: text

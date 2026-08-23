@@ -1,0 +1,7 @@
+/node_modules
+/.claude
+/dist
+/target
+/src-tauri/target
+/src-tauri/gen
+*.log

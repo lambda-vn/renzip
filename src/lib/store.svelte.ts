@@ -1,0 +1,406 @@
+/**
+ * Everything the window knows, in one place.
+ *
+ * The screens share the same archive, the same selection and the same running
+ * operation, so they read one store rather than passing that state down
+ * through props.
+ */
+
+import { SvelteSet } from "svelte/reactivity";
+
+import {
+  buildArchive,
+  cancelBuild,
+  cancelExtraction,
+  closeArchive,
+  extract,
+  listEntries,
+  openArchive,
+  previewEntry,
+  scanDirectory,
+  type ArchiveSummary,
+  type EntryRow,
+  type Layout,
+  type Preview,
+  type ProgressPayload,
+  type Rejection,
+  type ScanReport,
+} from "./api";
+import { formatSize } from "./format";
+import { setLanguage, t, tn } from "./i18n.svelte";
+import { kindKey, kindOf } from "./kinds";
+import { applyTheme, loadSettings, saveSettings, type Settings } from "./settings";
+import { buildTree, descendants, parentOf, visibleRows, type TreeRow } from "./tree";
+
+/** Which screen is showing. */
+export type View = "browse" | "create" | "settings";
+
+/** A line shown in the footer. */
+export type Status = { tone: "info" | "warn"; text: string };
+
+/** The single store the views read and write. */
+class AppStore {
+  /** Screen currently shown. */
+  view = $state<View>("browse");
+  /** Open archive, null before anything is opened. */
+  archive = $state<ArchiveSummary | null>(null);
+  /** Every entry of that archive. */
+  entries = $state<EntryRow[]>([]);
+  /** Folders unfolded in the list. */
+  open = new SvelteSet<string>();
+  /** Paths of the entries picked for extraction. */
+  selected = new SvelteSet<string>();
+  /** Text typed in the search box. */
+  filter = $state("");
+
+  /** Entry shown in the selection panel. */
+  current = $state<EntryRow | null>(null);
+  /** What the backend decided to show for it. */
+  preview = $state<Preview | null>(null);
+  /** True while that entry is being read. */
+  previewLoading = $state(false);
+
+  /** Progress of the running extraction or build. */
+  progress = $state<ProgressPayload | null>(null);
+  /** True while an operation runs, which disables the toolbar. */
+  busy = $state(false);
+  /** Last thing worth telling the user. */
+  status = $state<Status | null>(null);
+  /** Entries or files left out by the last operation. */
+  skipped = $state<Rejection[]>([]);
+
+  /** Directory picked on the creation screen, with what it holds. */
+  source = $state<{ dir: string; report: ScanReport } | null>(null);
+  /** Where the archive being created will be written. */
+  destPath = $state("");
+  /** Version the archive being created will announce. */
+  version = $state<string>("RPA-3.0");
+  /** Where an extraction will write. */
+  destDir = $state("");
+  /** Whether an extraction keeps the archive folders. */
+  layout = $state<Layout>("Tree");
+
+  /** Persisted preferences. */
+  settings = $state<Settings>(loadSettings());
+
+  /** Folder tree of the open archive. */
+  tree = $derived(buildTree(this.entries));
+  /** Rows of the single list: folders to unfold, and files. */
+  rows = $derived(this.listing());
+  /** How many files of each folder are ticked, for the tri-state boxes. */
+  tally = $derived(this.countByFolder());
+  /** Entries by path, so the selection can be read without a scan. */
+  byPath = $derived(new Map(this.entries.map((entry) => [entry.path, entry])));
+  /** How many entries are picked. */
+  selectionSize = $derived(this.selected.size);
+  /** What the selection holds, for the panel that stands in for a preview. */
+  selection = $derived(this.summarize());
+
+  /** Apply the stored preferences as soon as the window has a document. */
+  init(): void {
+    applyTheme(this.settings.theme);
+    setLanguage(this.settings.language);
+    this.version = this.settings.defaultVersion;
+  }
+
+  /**
+   * Add up the selection: how many, how big, and of what.
+   *
+   * Reads the selection rather than every entry, so picking a thousand files
+   * costs a thousand lookups and not a scan of the whole archive.
+   */
+  private summarize(): {
+    count: number;
+    size: number;
+    kinds: { label: string; count: number }[];
+    names: string[];
+  } {
+    const tally = new Map<string, number>();
+    let size = 0;
+    const names: string[] = [];
+
+    for (const path of this.selected) {
+      const entry = this.byPath.get(path);
+      if (!entry) {
+        continue;
+      }
+      size += entry.size;
+      const label = t(kindKey(kindOf(path)));
+      tally.set(label, (tally.get(label) ?? 0) + 1);
+      if (names.length < 6) {
+        names.push(path);
+      }
+    }
+
+    return {
+      count: this.selected.size,
+      size,
+      kinds: [...tally.entries()]
+        .map(([label, count]) => ({ label, count }))
+        .sort((a, b) => b.count - a.count),
+      names,
+    };
+  }
+
+  /** Rows to show, once the search is applied. */
+  private listing(): TreeRow[] {
+    const filter = this.filter.trim().toLowerCase();
+    const keep = (entry: EntryRow): boolean =>
+      filter === "" || entry.path.toLowerCase().includes(filter);
+    return visibleRows(this.tree, this.open, keep, filter !== "");
+  }
+
+  /**
+   * Count the ticked files of every folder, the root included.
+   *
+   * Walks the selection and climbs each path's ancestors, rather than
+   * scanning the archive per folder row: a folder row then reads its state in
+   * constant time, whatever its subtree holds.
+   */
+  private countByFolder(): Map<string, number> {
+    const tally = new Map<string, number>();
+    for (const path of this.selected) {
+      let folder = parentOf(path);
+      for (;;) {
+        tally.set(folder, (tally.get(folder) ?? 0) + 1);
+        if (folder === "") {
+          break;
+        }
+        folder = parentOf(folder);
+      }
+    }
+    return tally;
+  }
+
+  /**
+   * Open an archive and show it.
+   *
+   * @param path - Full path of the .rpa file.
+   */
+  async load(path: string): Promise<void> {
+    try {
+      if (this.archive) {
+        await closeArchive(this.archive.handle);
+      }
+      const summary = await openArchive(path);
+      this.entries = await listEntries(summary.handle);
+      this.archive = summary;
+      this.view = "browse";
+      this.filter = "";
+      this.open.clear();
+      this.selected.clear();
+      this.current = null;
+      this.preview = null;
+      this.skipped = summary.rejected;
+      this.status =
+        summary.rejected.length > 0
+          ? { tone: "warn", text: tn("count.rejected", summary.rejected.length) }
+          : { tone: "info", text: t("status.archiveOpened", { name: summary.name }) };
+    } catch (error) {
+      this.archive = null;
+      this.entries = [];
+      this.skipped = [];
+      this.status = { tone: "warn", text: String(error) };
+    }
+  }
+
+  /** Unfold or fold a folder of the list. */
+  toggleFolder(key: string): void {
+    if (this.open.has(key)) {
+      this.open.delete(key);
+    } else {
+      this.open.add(key);
+    }
+  }
+
+  /** Tick or untick a row, whether it is a file or a whole folder. */
+  toggleRow(row: TreeRow): void {
+    if (row.kind === "file") {
+      this.toggle(row.key);
+    } else {
+      this.toggleFolderSelection(row.key);
+    }
+  }
+
+  /** Add or remove one entry from the selection. */
+  toggle(path: string): void {
+    if (this.selected.has(path)) {
+      this.selected.delete(path);
+    } else {
+      this.selected.add(path);
+    }
+  }
+
+  /** Put every file of a folder in the selection, or take them all out. */
+  toggleFolderSelection(key: string): void {
+    const paths = descendants(this.tree, key).map((entry) => entry.path);
+    const allIn = paths.length > 0 && paths.every((path) => this.selected.has(path));
+    for (const path of paths) {
+      if (allIn) {
+        this.selected.delete(path);
+      } else {
+        this.selected.add(path);
+      }
+    }
+  }
+
+  /**
+   * Read one entry and show it in the selection panel.
+   *
+   * @param entry - Entry to inspect.
+   * @param force - Read it even when automatic preview is off.
+   */
+  async show(entry: EntryRow, force = false): Promise<void> {
+    this.current = entry;
+    this.preview = null;
+    if (!this.archive || (!this.settings.autoPreview && !force)) {
+      return;
+    }
+    this.previewLoading = true;
+    try {
+      this.preview = await previewEntry(this.archive.handle, entry.path);
+    } catch (error) {
+      this.status = { tone: "warn", text: String(error) };
+    } finally {
+      this.previewLoading = false;
+    }
+  }
+
+  /**
+   * Extract entries into the destination of the extraction screen.
+   *
+   * @param paths - Entries to extract, or null for the whole archive.
+   */
+  async runExtraction(paths: string[] | null): Promise<void> {
+    if (!this.archive || this.destDir === "") {
+      this.status = { tone: "warn", text: t("panel.destination.pick") };
+      return;
+    }
+
+    this.busy = true;
+    this.skipped = [];
+    this.progress = null;
+    try {
+      const report = await extract(this.archive.handle, paths, this.destDir, this.layout);
+      this.skipped = report.skipped;
+      this.status = {
+        tone: report.skipped.length > 0 || report.cancelled ? "warn" : "info",
+        text:
+          `${tn("count.extracted", report.extracted)} (${formatSize(report.bytes)})` +
+          `${report.cancelled ? t("status.cancelled") : ""}` +
+          `${report.skipped.length > 0 ? `, ${tn("count.ignored", report.skipped.length)}` : ""}.`,
+      };
+    } catch (error) {
+      this.status = { tone: "warn", text: String(error) };
+    } finally {
+      this.busy = false;
+      this.progress = null;
+    }
+  }
+
+  /**
+   * Read a directory and stage it on the creation screen.
+   *
+   * @param dir - Directory to pack.
+   */
+  async stage(dir: string): Promise<void> {
+    try {
+      const report = await scanDirectory(dir);
+      this.source = { dir, report };
+      this.skipped = report.skipped;
+      if (this.destPath === "") {
+        this.destPath = "archive.rpa";
+      }
+      this.status = {
+        tone: "info",
+        text: `${tn("count.packed", report.files.length)} (${formatSize(
+          report.files.reduce((total, file) => total + file.size, 0),
+        )}).`,
+      };
+    } catch (error) {
+      this.source = null;
+      this.status = { tone: "warn", text: String(error) };
+    }
+  }
+
+  /** Pack the staged directory, then open the result to check it. */
+  async runBuild(): Promise<void> {
+    if (!this.source || this.destPath === "") {
+      this.status = { tone: "warn", text: t("create.nothing") };
+      return;
+    }
+
+    this.busy = true;
+    this.skipped = [];
+    this.progress = null;
+    try {
+      const report = await buildArchive(this.source.dir, this.destPath, this.version);
+      this.skipped = report.skipped;
+      let text = t("status.built", {
+        count: tn("count.packed", report.entries),
+        size: formatSize(report.bytes),
+        version: this.version,
+        cancelled: report.cancelled ? t("status.cancelled") : "",
+      });
+
+      if (!report.cancelled && this.settings.verifyAfterBuild) {
+        // Verification is a real read of what was just written: the archive is
+        // reopened, its index decoded, and what it announces compared to what
+        // was packed. Opening it also puts it in front of the user, which is
+        // where they wanted to end up anyway.
+        const before = { entries: report.entries, bytes: report.bytes };
+        await this.load(this.destPath);
+        const summary = this.archive;
+        const ok =
+          summary !== null &&
+          summary.entry_count === before.entries &&
+          summary.total_size === before.bytes;
+        text += ok
+          ? t("status.verified")
+          : t("status.verifyFailed", {
+              reason: t("status.verifyMismatch", {
+                found: tn("count.entry", summary?.entry_count ?? 0),
+                expected: tn("count.packed", before.entries),
+              }),
+            });
+        this.status = { tone: ok ? "info" : "warn", text };
+        return;
+      }
+
+      this.status = { tone: report.cancelled ? "warn" : "info", text };
+    } catch (error) {
+      this.status = { tone: "warn", text: String(error) };
+    } finally {
+      this.busy = false;
+      this.progress = null;
+    }
+  }
+
+  /** Ask whatever is running to stop. */
+  async cancel(): Promise<void> {
+    if (this.progress?.phase === "build") {
+      await cancelBuild();
+    } else if (this.archive) {
+      await cancelExtraction(this.archive.handle);
+    }
+  }
+
+  /**
+   * Change one preference and persist the lot.
+   *
+   * @param patch - Fields to change.
+   */
+  updateSettings(patch: Partial<Settings>): void {
+    this.settings = { ...this.settings, ...patch };
+    saveSettings(this.settings);
+    if (patch.language) {
+      setLanguage(patch.language);
+    }
+    if (patch.defaultVersion) {
+      this.version = patch.defaultVersion;
+    }
+  }
+}
+
+/** The store, shared by every view. */
+export const app = new AppStore();

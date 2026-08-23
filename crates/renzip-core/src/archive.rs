@@ -1,0 +1,547 @@
+//! Opening, listing and extracting an .rpa archive.
+
+use std::collections::{HashMap, HashSet};
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
+use std::path::{Path, PathBuf};
+
+use serde::Serialize;
+
+use crate::error::{Error, Result};
+use crate::header::{self, Header, Version, MAX_HEADER_LEN};
+use crate::index::{self, RawEntry};
+use crate::path::{self as safe_path, PathRejection};
+
+/// One file stored in an archive, after every validation has passed.
+#[derive(Debug, Clone, Serialize)]
+pub struct Entry {
+    /// Path inside the archive, separators normalized to '/'.
+    pub path: String,
+    /// Offset of the stored bytes inside the archive file.
+    pub offset: u64,
+    /// Size of the file once extracted, prefix included.
+    pub length: u64,
+    /// Bytes stored in the index that open the file content.
+    #[serde(skip)]
+    pub prefix: Vec<u8>,
+}
+
+/// An entry the archive announced but that will not be extracted.
+#[derive(Debug, Clone, Serialize)]
+pub struct Rejection {
+    /// Path as the archive spelled it.
+    pub path: String,
+    /// Why it was refused, in a form fit to show to a user.
+    pub reason: String,
+}
+
+/// What an extraction is allowed to touch.
+#[derive(Debug, Clone, Copy)]
+pub enum Selection<'a> {
+    /// Every entry of the archive.
+    All,
+    /// Only these paths, as returned by [`Archive::entries`].
+    Paths(&'a [String]),
+}
+
+/// How extracted files are laid out under the destination directory.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Deserialize)]
+pub enum Layout {
+    /// Keep the folders the archive paths describe.
+    #[default]
+    Tree,
+    /// Drop every folder and write file names side by side.
+    ///
+    /// Two entries can then claim the same name; the second one is reported as
+    /// skipped rather than silently overwriting the first, since losing a file
+    /// to a name collision is exactly the kind of quiet data loss an extractor
+    /// must never do.
+    Flat,
+}
+
+/// State of an extraction, handed to the progress callback.
+#[derive(Debug, Clone, Copy)]
+pub struct Progress<'a> {
+    /// Entries finished so far.
+    pub done: usize,
+    /// Entries the extraction will go through.
+    pub total: usize,
+    /// Bytes written so far.
+    pub bytes_done: u64,
+    /// Bytes the extraction will write if it runs to the end.
+    pub bytes_total: u64,
+    /// Entry that was just finished.
+    pub current: &'a str,
+}
+
+/// Outcome of an extraction.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ExtractionReport {
+    /// Number of files written.
+    pub extracted: usize,
+    /// Total bytes written.
+    pub bytes: u64,
+    /// Entries left out, with the reason for each.
+    pub skipped: Vec<Rejection>,
+    /// True when the caller asked to stop before the end.
+    pub cancelled: bool,
+}
+
+/// A read-only view of one .rpa archive and its open file handle.
+pub struct Archive {
+    path: PathBuf,
+    file: File,
+    file_size: u64,
+    version: Version,
+    entries: Vec<Entry>,
+    by_path: HashMap<String, usize>,
+    rejected: Vec<Rejection>,
+    multi_segment: Vec<String>,
+}
+
+impl std::fmt::Debug for Archive {
+    /// Summarize the archive rather than dumping every entry of it.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Archive")
+            .field("path", &self.path)
+            .field("version", &self.version)
+            .field("file_size", &self.file_size)
+            .field("entries", &self.entries.len())
+            .field("rejected", &self.rejected.len())
+            .finish()
+    }
+}
+
+impl Archive {
+    /// Open an archive and decode its index.
+    ///
+    /// Entries whose path or byte range cannot be trusted are dropped here
+    /// rather than at extraction time, so that a hostile path never reaches
+    /// the file system layer at all; they stay visible through
+    /// [`Archive::rejected`].
+    ///
+    /// # Errors
+    ///
+    /// Fails when the file cannot be read, its header is not a supported
+    /// version, or its index is missing or malformed.
+    pub fn open(path: impl AsRef<Path>) -> Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let mut file = File::open(&path).map_err(|e| Error::io(&path, e))?;
+        let file_size = file.metadata().map_err(|e| Error::io(&path, e))?.len();
+
+        let header = read_header(&mut file, &path)?;
+        let raw_entries = match header.version {
+            Version::Rpa1_0 => {
+                let index_path = path.with_extension("rpi");
+                if !index_path.is_file() {
+                    return Err(Error::MissingIndexFile(index_path));
+                }
+                let index_file = File::open(&index_path).map_err(|e| Error::io(&index_path, e))?;
+                index::decode(index_file, 0)?
+            }
+            _ => {
+                if header.index_offset >= file_size {
+                    return Err(Error::Truncated(format!(
+                        "the index is announced at offset {} of a {} byte file",
+                        header.index_offset, file_size
+                    )));
+                }
+                file.seek(SeekFrom::Start(header.index_offset))
+                    .map_err(|e| Error::io(&path, e))?;
+                index::decode(&mut file, header.key)?
+            }
+        };
+
+        let (entries, rejected, multi_segment) = validate(raw_entries, file_size);
+        let by_path = entries
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| (entry.path.clone(), i))
+            .collect();
+
+        Ok(Archive {
+            path,
+            file,
+            file_size,
+            version: header.version,
+            entries,
+            by_path,
+            rejected,
+            multi_segment,
+        })
+    }
+
+    /// Path the archive was opened from.
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    /// Version announced by the header.
+    pub fn version(&self) -> Version {
+        self.version
+    }
+
+    /// Size of the archive file itself, in bytes.
+    pub fn file_size(&self) -> u64 {
+        self.file_size
+    }
+
+    /// Every usable entry, sorted by path.
+    pub fn entries(&self) -> &[Entry] {
+        &self.entries
+    }
+
+    /// Entries the archive announced but that were refused, with the reason.
+    pub fn rejected(&self) -> &[Rejection] {
+        &self.rejected
+    }
+
+    /// Paths whose index listed more than one tuple.
+    ///
+    /// Ren'Py reads only the first, and so does this crate; the list exists so
+    /// the application can say out loud that something was left behind.
+    pub fn multi_segment_paths(&self) -> &[String] {
+        &self.multi_segment
+    }
+
+    /// Total extracted size of every usable entry.
+    pub fn total_size(&self) -> u64 {
+        self.entries.iter().map(|entry| entry.length).sum()
+    }
+
+    /// Read one entry into memory.
+    ///
+    /// Callers decide what size they are willing to hold: this is meant for
+    /// previews and small files, extraction streams to disk instead.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::EntryNotFound`] for an unknown path, [`Error::Truncated`] when
+    /// the file ends inside the entry.
+    pub fn read_entry(&mut self, path: &str) -> Result<Vec<u8>> {
+        let index = *self
+            .by_path
+            .get(path)
+            .ok_or_else(|| Error::EntryNotFound(path.to_string()))?;
+        let entry = self.entries[index].clone();
+
+        let data_len = entry.length - entry.prefix.len() as u64;
+        let mut buffer = Vec::with_capacity(entry.length as usize);
+        buffer.extend_from_slice(&entry.prefix);
+        self.file
+            .seek(SeekFrom::Start(entry.offset))
+            .map_err(|e| Error::io(&self.path, e))?;
+        (&mut self.file)
+            .take(data_len)
+            .read_to_end(&mut buffer)
+            .map_err(|e| Error::io(&self.path, e))?;
+
+        if buffer.len() as u64 != entry.length {
+            return Err(Error::Truncated(format!(
+                "entry '{}' stops after {} of {} bytes",
+                entry.path,
+                buffer.len(),
+                entry.length
+            )));
+        }
+        Ok(buffer)
+    }
+
+    /// Extract a selection of entries into `dest_dir`.
+    ///
+    /// `dest_dir` is created if needed. `on_progress` is called once per
+    /// finished entry and stops the extraction when it returns `false`; the
+    /// files already written are kept and the report says it was cancelled.
+    ///
+    /// An entry that cannot be written, or whose destination turns out to sit
+    /// outside `dest_dir` once symbolic links are resolved, is reported in
+    /// [`ExtractionReport::skipped`] and does not abort the rest.
+    ///
+    /// # Errors
+    ///
+    /// Fails only for problems that concern the whole run: an unusable
+    /// destination directory, or a path in `Selection::Paths` that no entry
+    /// carries.
+    pub fn extract(
+        &mut self,
+        selection: Selection<'_>,
+        dest_dir: &Path,
+        layout: Layout,
+        on_progress: &mut dyn FnMut(&Progress<'_>) -> bool,
+    ) -> Result<ExtractionReport> {
+        let indices = self.resolve_selection(selection)?;
+        let root = prepare_destination(dest_dir)?;
+        let mut taken: HashSet<PathBuf> = HashSet::with_capacity(indices.len());
+
+        let mut report = ExtractionReport {
+            extracted: 0,
+            bytes: 0,
+            skipped: Vec::new(),
+            cancelled: false,
+        };
+        let total = indices.len();
+        let bytes_total: u64 = indices.iter().map(|&i| self.entries[i].length).sum();
+
+        // Split the borrow so that reading through the file handle and looking
+        // at the entry list can happen in the same loop.
+        let Archive {
+            file,
+            entries,
+            path,
+            ..
+        } = self;
+
+        for (done, &i) in indices.iter().enumerate() {
+            let entry = &entries[i];
+            match write_entry(file, path, entry, &root, layout, &mut taken) {
+                Ok(written) => {
+                    report.extracted += 1;
+                    report.bytes += written;
+                }
+                Err(reason) => report.skipped.push(Rejection {
+                    path: entry.path.clone(),
+                    reason,
+                }),
+            }
+
+            let keep_going = on_progress(&Progress {
+                done: done + 1,
+                total,
+                bytes_done: report.bytes,
+                bytes_total,
+                current: &entry.path,
+            });
+            if !keep_going {
+                report.cancelled = true;
+                break;
+            }
+        }
+        Ok(report)
+    }
+
+    /// Turn a selection into entry indices, in listing order.
+    fn resolve_selection(&self, selection: Selection<'_>) -> Result<Vec<usize>> {
+        match selection {
+            Selection::All => Ok((0..self.entries.len()).collect()),
+            Selection::Paths(paths) => {
+                let mut indices = Vec::with_capacity(paths.len());
+                for path in paths {
+                    let index = *self
+                        .by_path
+                        .get(path)
+                        .ok_or_else(|| Error::EntryNotFound(path.clone()))?;
+                    indices.push(index);
+                }
+                indices.sort_unstable();
+                indices.dedup();
+                Ok(indices)
+            }
+        }
+    }
+}
+
+/// Read the header line, falling back to RPA-1.0 detection.
+///
+/// An RPA-1.0 archive has no header at all: it starts with file data and
+/// keeps its index in a sibling .rpi file, so a file that does not announce
+/// itself is treated as one only when that sibling exists.
+fn read_header(file: &mut File, path: &Path) -> Result<Header> {
+    let mut buffer = [0u8; MAX_HEADER_LEN];
+    let read = file.read(&mut buffer).map_err(|e| Error::io(path, e))?;
+    let window = &buffer[..read];
+
+    if window.starts_with(b"RPA-") {
+        if let Some(end) = window.iter().position(|&b| b == b'\n') {
+            let line = String::from_utf8_lossy(&window[..end]);
+            return header::parse_line(line.trim_end_matches('\r'));
+        }
+    }
+    if path.with_extension("rpi").is_file() {
+        return Ok(Header {
+            version: Version::Rpa1_0,
+            index_offset: 0,
+            key: 0,
+        });
+    }
+    Err(Error::UnsupportedHeader(
+        String::from_utf8_lossy(&window[..read.min(32)]).to_string(),
+    ))
+}
+
+/// Check every raw entry against the path rules and the archive bounds.
+///
+/// Returns the usable entries sorted by path, the refused ones, and the paths
+/// whose index held more than one tuple.
+fn validate(
+    raw_entries: Vec<RawEntry>,
+    file_size: u64,
+) -> (Vec<Entry>, Vec<Rejection>, Vec<String>) {
+    let mut entries = Vec::with_capacity(raw_entries.len());
+    let mut rejected = Vec::new();
+    let mut multi_segment = Vec::new();
+    let mut seen: HashMap<String, ()> = HashMap::with_capacity(raw_entries.len());
+
+    for raw in raw_entries {
+        if raw.segment_count > 1 {
+            multi_segment.push(raw.path.clone());
+        }
+        if let Err(rejection) = safe_path::sanitize(&raw.path) {
+            rejected.push(Rejection {
+                path: raw.path,
+                reason: reason_of(&rejection),
+            });
+            continue;
+        }
+        if let Some(reason) = out_of_bounds(&raw, file_size) {
+            rejected.push(Rejection {
+                path: raw.path,
+                reason,
+            });
+            continue;
+        }
+
+        let normalized = raw.path.replace('\\', "/");
+        if seen.insert(normalized.clone(), ()).is_some() {
+            rejected.push(Rejection {
+                path: raw.path,
+                reason: format!("duplicate path, '{normalized}' is already in the archive"),
+            });
+            continue;
+        }
+        entries.push(Entry {
+            path: normalized,
+            offset: raw.offset,
+            length: raw.length,
+            prefix: raw.prefix,
+        });
+    }
+
+    entries.sort_by(|a, b| a.path.cmp(&b.path));
+    (entries, rejected, multi_segment)
+}
+
+/// Describe why a byte range cannot be read, if that is the case.
+fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<String> {
+    let prefix_len = raw.prefix.len() as u64;
+    if prefix_len > raw.length {
+        return Some(format!(
+            "declares a {} byte prefix inside a {} byte entry",
+            prefix_len, raw.length
+        ));
+    }
+    let end = raw.offset.checked_add(raw.length - prefix_len)?;
+    if end > file_size {
+        return Some(format!(
+            "declares bytes {}..{} of a {} byte archive",
+            raw.offset, end, file_size
+        ));
+    }
+    None
+}
+
+/// Turn a path rejection into a message fit for a report.
+fn reason_of(rejection: &PathRejection) -> String {
+    format!("unsafe path: {rejection}")
+}
+
+/// Create the destination directory and return its canonical form.
+fn prepare_destination(dest_dir: &Path) -> Result<PathBuf> {
+    std::fs::create_dir_all(dest_dir).map_err(|e| Error::InvalidDestination {
+        path: dest_dir.to_path_buf(),
+        reason: e.to_string(),
+    })?;
+    let root = dest_dir
+        .canonicalize()
+        .map_err(|e| Error::InvalidDestination {
+            path: dest_dir.to_path_buf(),
+            reason: e.to_string(),
+        })?;
+    if !root.is_dir() {
+        return Err(Error::InvalidDestination {
+            path: root,
+            reason: "not a directory".into(),
+        });
+    }
+    Ok(root)
+}
+
+/// Write one entry under `root`, streaming its bytes.
+///
+/// Returns the number of bytes written, or the reason the entry was skipped.
+/// Skipping is deliberately not an [`Error`]: one unwritable file out of fifty
+/// thousand must not throw away the extraction that already succeeded.
+fn write_entry(
+    file: &mut File,
+    archive: &Path,
+    entry: &Entry,
+    root: &Path,
+    layout: Layout,
+    taken: &mut HashSet<PathBuf>,
+) -> std::result::Result<u64, String> {
+    let mut relative = safe_path::sanitize(&entry.path).map_err(|r| reason_of(&r))?;
+    if layout == Layout::Flat {
+        relative = PathBuf::from(
+            relative
+                .file_name()
+                .ok_or_else(|| "entry has no file name".to_string())?,
+        );
+    }
+    if !taken.insert(relative.clone()) {
+        return Err(format!(
+            "another entry of this extraction already wrote {}",
+            relative.display()
+        ));
+    }
+    let target = root.join(&relative);
+    let parent = target
+        .parent()
+        .ok_or_else(|| "entry has no parent directory".to_string())?;
+
+    std::fs::create_dir_all(parent)
+        .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+    // The path itself was checked before any of this, but a symbolic link
+    // planted inside the destination could still point out of it, so the
+    // directory that will really be written to is checked once it exists.
+    match safe_path::is_contained(root, parent) {
+        Ok(true) => {}
+        Ok(false) => return Err(format!("would write outside of {}", root.display())),
+        Err(e) => return Err(format!("cannot resolve {}: {e}", parent.display())),
+    }
+    // Same reasoning for the file: opening it would follow a link that was
+    // there before us, so an existing link is removed rather than written
+    // through. A plain file is left to be overwritten as usual.
+    if let Ok(metadata) = std::fs::symlink_metadata(&target) {
+        if metadata.file_type().is_symlink() {
+            std::fs::remove_file(&target)
+                .map_err(|e| format!("cannot replace the link at {}: {e}", target.display()))?;
+        }
+    }
+
+    let mut out = OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&target)
+        .map_err(|e| format!("cannot write {}: {e}", target.display()))?;
+
+    out.write_all(&entry.prefix)
+        .map_err(|e| format!("cannot write {}: {e}", target.display()))?;
+    file.seek(SeekFrom::Start(entry.offset))
+        .map_err(|e| format!("cannot read {}: {e}", archive.display()))?;
+    let copied = std::io::copy(
+        &mut file.take(entry.length - entry.prefix.len() as u64),
+        &mut out,
+    )
+    .map_err(|e| format!("cannot extract {}: {e}", entry.path))?;
+    out.flush()
+        .map_err(|e| format!("cannot write {}: {e}", target.display()))?;
+
+    let written = copied + entry.prefix.len() as u64;
+    if written != entry.length {
+        return Err(format!(
+            "archive ends after {} of the {} bytes announced",
+            written, entry.length
+        ));
+    }
+    Ok(written)
+}

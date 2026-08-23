@@ -1,0 +1,191 @@
+name: Build
+
+# Each installer is built on the system it targets: `tauri build` links
+# against the native webview of the machine it runs on, WebView2 on
+# Windows, WebKitGTK on Linux, WKWebView on macOS. Three runners is
+# therefore the only way to produce three installers.
+#
+# Never on push: a build compiles the whole dependency tree and takes
+# minutes, where the CI workflow answers in seconds and is what every
+# commit needs. Start it by hand, or tag a version.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+# Reading the code and uploading an artifact is all this does. Stated
+# rather than inherited, so a token that grows by default does not grow
+# here. The release job raises its own, for itself alone.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # The version lives in three files and the bundler reads only one of
+  # them, so a tag disagreeing with tauri.conf.json would publish v0.2.0
+  # containing an application whose About screen says 0.1.0. Ten seconds
+  # here, run beside the builds rather than after them, and the release
+  # cannot happen without it.
+  version:
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - shell: bash
+        run: |
+          python3 - "${GITHUB_REF_NAME#v}" <<'PY'
+          import json
+          import sys
+          import tomllib
+
+          tagged = sys.argv[1]
+          declared = {
+              "Cargo.toml": tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"],
+              "package.json": json.load(open("package.json", encoding="utf-8"))["version"],
+              "src-tauri/tauri.conf.json": json.load(
+                  open("src-tauri/tauri.conf.json", encoding="utf-8")
+              )["version"],
+          }
+
+          wrong = {name: value for name, value in declared.items() if value != tagged}
+          if wrong:
+              for name, value in wrong.items():
+                  print(f"{name} declares {value}, the tag asks for {tagged}.", file=sys.stderr)
+              print("Bump every version, commit, then move the tag.", file=sys.stderr)
+              sys.exit(1)
+          PY
+
+  bundle:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # 22.04 rather than the latest image: glibc is forward
+          # compatible and not backward, so a binary built on 24.04
+          # refuses to start on a 22.04 desktop while the reverse works.
+          # The oldest supported image is the one that reaches the most
+          # machines.
+          - name: linux
+            runner: ubuntu-22.04
+          - name: windows
+            runner: windows-latest
+          # One universal bundle rather than two builds: nothing here
+          # cross-compiles badly, the Rust code is the same on both
+          # slices, and it spares the user having to know which Mac they
+          # own.
+          - name: macos
+            runner: macos-latest
+            args: --target universal-apple-darwin
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # No tagName, releaseName or releaseId on purpose: the action then
+      # builds and stops, without asking for the write token every matrix
+      # job would otherwise need. Publishing is one job below, alone.
+      - uses: tauri-apps/tauri-action@v1
+        id: build
+        with:
+          args: ${{ matrix.args }}
+
+      # artifactPaths is a JSON array of absolute paths, and the bundle
+      # directory it points into also holds the unpacked trees the
+      # bundler worked from: the .app, the deb staging folder. Copying
+      # the named files is what keeps the artifact to the installers.
+      # Node rather than jq, since setup-node just guaranteed it on all
+      # three systems.
+      #
+      # Not dist/, which is where Vite has just written the frontend the
+      # binary embeds: uploading that folder would ship index.html beside
+      # the installers.
+      #
+      # Directories are skipped: with bundle targets set to "all", macOS
+      # produces RenZip.app beside the .dmg, and the .app is a folder the
+      # .dmg already carries.
+      - name: Collect the installers
+        shell: bash
+        env:
+          ARTIFACTS: ${{ steps.build.outputs.artifactPaths }}
+        run: |
+          mkdir -p installers
+          node -e '
+            const fs = require("fs");
+            const path = require("path");
+            for (const file of JSON.parse(process.env.ARTIFACTS)) {
+              if (fs.statSync(file).isDirectory()) {
+                console.log(`skipped ${path.basename(file)}, a directory`);
+                continue;
+              }
+              fs.copyFileSync(file, path.join("installers", path.basename(file)));
+              console.log(path.basename(file));
+            }
+          '
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: renzip-${{ matrix.name }}
+          path: installers/*
+          if-no-files-found: error
+
+  # A draft, never a published release: the installers are unsigned,
+  # which SmartScreen and Gatekeeper both have something to say about,
+  # and that belongs in the notes a human writes before pressing publish.
+  release:
+    needs: [version, bundle]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    # The only job here allowed to write to the repository, and only
+    # because creating a release is writing to it.
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: installers
+          merge-multiple: true
+
+      # gh over an action from the Marketplace: one less third party in a
+      # job holding a write token.
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" installers/*
+          --repo "$GITHUB_REPOSITORY"
+          --draft
+          --generate-notes

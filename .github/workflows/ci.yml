@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Reading the code is all any of these jobs does. Stated rather than
+# inherited, so a token that grows by default does not grow here.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Its own job because it needs nothing built: no system library, no
+  # frontend, no compilation. Seconds, and it answers before the runners
+  # that take minutes have finished installing anything.
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  # svelte-check is the type checker and the RGAA linter of this project,
+  # and `npm run build` runs it ahead of Vite. Kept apart from the Rust
+  # job so a type error in a .svelte file reads as one red job, not three.
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+  # Three systems because the code branches on the platform and the core
+  # is written against filesystems that disagree. Path sanitising rejects
+  # Windows reserved names and drive letters, extraction checks
+  # containment on the canonical path, and desktop.rs is three cfg-gated
+  # implementations of the same two functions.
+  rust:
+    name: rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # The list Tauri publishes for Debian and Ubuntu. Without it the
+      # src-tauri crate does not link, which takes the workspace tests
+      # down with it even though renzip-core needs none of this.
+      - name: Install the Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      # Not the frontend job repeated: `tauri::generate_context!()` embeds
+      # ../dist into the binary at compile time, so without it src-tauri
+      # does not compile at all and nothing below would run. Vite alone
+      # here, since the frontend job is the one that checks the types.
+      - name: Build the frontend the binary embeds
+        run: |
+          npm ci
+          npx vite build
+
+      - run: cargo clippy --all-targets --workspace -- -D warnings
+
+      - run: cargo test --workspace

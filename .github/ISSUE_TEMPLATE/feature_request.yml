@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest something the application should do
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >
+        What are you trying to do with the archive, and what makes it hard
+        today? Describe the work itself, not the solution you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like
+      description: Optional. If you already have an idea of the answer.
+  - type: input
+    id: scale
+    attributes:
+      label: Archive size
+      description: >
+        How many entries and how many gigabytes do the archives you work on
+        hold? A lot of decisions here depend on those numbers.
+      placeholder: around 20000 entries over 3 GB
