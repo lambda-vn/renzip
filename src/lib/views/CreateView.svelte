@@ -14,13 +14,13 @@
   type Props = {
     /** Ask for the source directory. */
     onpicksource: () => void;
-    /** Ask where the archive should be written. */
-    onpickdest: () => void;
+    /** Ask where to write the archive, then build it. */
+    onbuild: () => void;
     /** True while something is being dragged over the window. */
     dragging: boolean;
   };
 
-  let { onpicksource, onpickdest, dragging }: Props = $props();
+  let { onpicksource, onbuild, dragging }: Props = $props();
 
   /**
    * Versions offered, which are the ones that can actually be written.
@@ -94,29 +94,6 @@
   </div>
 
   <div class="aside-fill flex min-h-0 flex-col gap-4.5 overflow-y-auto p-5">
-    <div class="field">
-      <label for="dest-path">{t("create.dest")}</label>
-      <div class="flex">
-        <input
-          id="dest-path"
-          class="input truncate"
-          value={app.destPath}
-          readonly
-          placeholder="archive.rpa"
-          title={app.destPath}
-          style="border-radius:var(--radius-md) 0 0 var(--radius-md)"
-        />
-        <button
-          type="button"
-          class="btn btn-secondary shrink-0"
-          style="border-left:0;border-radius:0 var(--radius-md) var(--radius-md) 0"
-          onclick={onpickdest}
-        >
-          {t("panel.browse")}
-        </button>
-      </div>
-    </div>
-
     <div>
       <h2 class="m-0 mb-2 text-[13px] tracking-[0.08em] uppercase">{t("create.version")}</h2>
       <div class="seg" role="group" aria-label={t("create.versionAria")}>
@@ -163,8 +140,8 @@
         type="button"
         class="btn btn-primary btn-block"
         style="min-height:46px;padding-inline:16px"
-        disabled={app.busy || !app.source || app.destPath === ""}
-        onclick={() => app.runBuild()}
+        disabled={app.busy || !app.source}
+        onclick={onbuild}
       >
         {t("create.build")}
         <Icon name="arrowRight" size={16} style="margin-left:auto" />

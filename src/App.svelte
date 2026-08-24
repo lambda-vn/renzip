@@ -147,7 +147,7 @@
   }
 
   /** Ask where the new archive should be written. */
-  async function chooseDestPath(): Promise<void> {
+  async function chooseDestPath(): Promise<boolean> {
     const chosen = await save({
       title: t("dialog.saveArchive"),
       defaultPath: app.destPath || "archive.rpa",
@@ -155,7 +155,9 @@
     });
     if (typeof chosen === "string") {
       app.destPath = chosen;
+      return true;
     }
+    return false;
   }
 
   /** Ask where an extraction should write, defaulting to the last one picked. */
@@ -188,6 +190,20 @@
       return;
     }
     await app.runExtraction(paths);
+  }
+
+  /**
+   * Build the staged directory right away, always asking where to first.
+   *
+   * The save dialog itself asks for the folder and the archive's name, the
+   * way any application's save action does; there is nothing left to fill in
+   * ahead of time on the creation screen.
+   */
+  async function buildNow(): Promise<void> {
+    if (!(await chooseDestPath())) {
+      return;
+    }
+    await app.runBuild();
   }
 
   /** True when a shortcut here would collide with typing into this element. */
@@ -268,7 +284,7 @@
         onpickdest={() => void chooseDestDir()}
       />
     {:else if app.view === "create"}
-      <CreateView onpicksource={chooseSource} onpickdest={chooseDestPath} {dragging} />
+      <CreateView onpicksource={chooseSource} onbuild={buildNow} {dragging} />
     {:else}
       <SettingsView />
     {/if}

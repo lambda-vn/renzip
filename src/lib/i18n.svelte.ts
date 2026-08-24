@@ -32,7 +32,6 @@ const MESSAGES = {
   "dialog.saveArchive": { fr: "Enregistrer l'archive", en: "Save the archive" },
   "dialog.extractTo": { fr: "Extraire vers", en: "Extract to" },
 
-  "create.dest": { fr: "Fichier de sortie", en: "Output file" },
   "create.options": { fr: "Options", en: "Options" },
   "create.versionAria": { fr: "Version du format à écrire", en: "Format version to write" },
   "create.root": {
@@ -246,8 +245,8 @@ const MESSAGES = {
   "status.warnLabel": { fr: "Attention", en: "Warning" },
   "status.refreshed": { fr: "Archive actualisée.", en: "Archive refreshed." },
   "status.built": {
-    fr: "Archive écrite : {count} ({size}) en {version}{cancelled}.",
-    en: "Archive written: {count} ({size}) in {version}{cancelled}.",
+    fr: "Archive écrite dans {path} : {count} ({size}) en {version}{cancelled}.",
+    en: "Archive written to {path}: {count} ({size}) in {version}{cancelled}.",
   },
   "status.verified": { fr: " Relecture conforme.", en: " Verified." },
   "status.verifyFailed": {

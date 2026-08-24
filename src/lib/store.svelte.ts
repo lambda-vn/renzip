@@ -411,9 +411,6 @@ class AppStore {
       this.excluded.clear();
       this.stagedOpen.clear();
       this.skipped = report.skipped;
-      if (this.destPath === "") {
-        this.destPath = "archive.rpa";
-      }
       this.status = {
         tone: "info",
         text: `${tn("count.packed", report.files.length)} (${formatSize(
@@ -455,6 +452,7 @@ class AppStore {
       );
       this.skipped = report.skipped;
       let text = t("status.built", {
+        path: this.destPath,
         count: tn("count.packed", report.entries),
         size: formatSize(report.bytes),
         version: this.version,
