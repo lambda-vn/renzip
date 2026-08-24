@@ -484,7 +484,7 @@ fn launch_path_from_args(args: impl Iterator<Item = String>) -> Option<String> {
 /// Build and run the application.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let app = match tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -508,15 +508,21 @@ pub fn run() {
             launch_path,
         ])
         .build(tauri::generate_context!())
-        .expect("error while starting RenZip")
-        // The scratch copies the row menu made are cleaned up on the way out,
-        // the same as when an archive is closed. A crash still leaves them
-        // behind, which is what the system temporary folder is for.
-        .run(|app, event| {
-            if matches!(event, tauri::RunEvent::Exit) {
-                app.state::<AppState>().close_all();
-            }
-        });
+    {
+        Ok(app) => app,
+        Err(e) => {
+            eprintln!("error while starting RenZip: {e}");
+            std::process::exit(1);
+        }
+    };
+    // The scratch copies the row menu made are cleaned up on the way out,
+    // the same as when an archive is closed. A crash still leaves them
+    // behind, which is what the system temporary folder is for.
+    app.run(|app, event| {
+        if matches!(event, tauri::RunEvent::Exit) {
+            app.state::<AppState>().close_all();
+        }
+    });
 }
 
 #[cfg(test)]

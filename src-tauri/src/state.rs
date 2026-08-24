@@ -74,10 +74,7 @@ impl AppState {
     /// Register a session and return its handle.
     pub fn insert(&self, session: Session) -> u32 {
         let handle = self.next_handle.fetch_add(1, Ordering::Relaxed) + 1;
-        self.sessions
-            .lock()
-            .expect("archive registry")
-            .insert(handle, Arc::new(session));
+        self.lock().insert(handle, Arc::new(session));
         handle
     }
 
@@ -88,9 +85,7 @@ impl AppState {
     /// Returns a message for the window when the handle is unknown, which
     /// means the archive was closed while a command was in flight.
     pub fn session(&self, handle: u32) -> Result<Arc<Session>, String> {
-        self.sessions
-            .lock()
-            .expect("archive registry")
+        self.lock()
             .get(&handle)
             .cloned()
             .ok_or_else(|| format!("archive {handle} is not open"))
@@ -99,12 +94,7 @@ impl AppState {
     /// Drop a session, cancelling anything still running on it and taking its
     /// scratch copies with it.
     pub fn remove(&self, handle: u32) {
-        if let Some(session) = self
-            .sessions
-            .lock()
-            .expect("archive registry")
-            .remove(&handle)
-        {
+        if let Some(session) = self.lock().remove(&handle) {
             session.cancel.store(true, Ordering::Relaxed);
             session.discard_scratch();
         }
@@ -115,10 +105,21 @@ impl AppState {
     /// Closing the window is the other way an archive stops being open, and
     /// the copies the row menu made have no reason to outlive it.
     pub fn close_all(&self) {
-        for (_, session) in self.sessions.lock().expect("archive registry").drain() {
+        for (_, session) in self.lock().drain() {
             session.cancel.store(true, Ordering::Relaxed);
             session.discard_scratch();
         }
+    }
+
+    /// Lock the session registry, recovering it if a prior panic poisoned it.
+    ///
+    /// A poisoned lock here only means some earlier command panicked while
+    /// holding it; the map itself is still a valid map, so refusing every
+    /// later command over that is worse than carrying on with it.
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<u32, Arc<Session>>> {
+        self.sessions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
