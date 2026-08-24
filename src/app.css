@@ -68,6 +68,13 @@
   /* Accent used as text on the page background, same reasoning. */
   --color-accent-text: var(--color-accent-700);
 
+  /* A warning must never rely on colour alone (RGAA 3.1), but the text or
+     icon carrying that meaning still needs a hue nothing else in the
+     interface uses, so it reads as its own signal rather than an accent. */
+  --color-warn: #d97706;
+  --color-warn-text: #92400e;
+  --color-warn-100: color-mix(in srgb, var(--color-warn) 16%, transparent);
+
   --radius-sm: 6px;
   --radius-md: 9px;
   --radius-lg: 14px;
@@ -112,6 +119,8 @@
     --color-divider: color-mix(in srgb, #ece9f5 16%, transparent);
 
     --color-accent-text: var(--color-accent-400);
+    --color-warn-text: #fbbf24;
+    --color-warn-100: color-mix(in srgb, var(--color-warn) 22%, transparent);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45);
@@ -144,6 +153,8 @@
   --color-divider: color-mix(in srgb, #ece9f5 16%, transparent);
 
   --color-accent-text: var(--color-accent-400);
+  --color-warn-text: #fbbf24;
+  --color-warn-100: color-mix(in srgb, var(--color-warn) 22%, transparent);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45);
@@ -218,11 +229,16 @@
 }
 
 @layer components {
+  /* 65%, not 55%: the lighter mix read at 3.77:1 on the page background in
+     the light theme, under the 4.5:1 RGAA asks for normal text. */
   .text-muted {
-    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+    color: color-mix(in srgb, var(--color-text) 65%, transparent);
   }
   .text-accent {
     color: var(--color-accent-text);
+  }
+  .text-warn {
+    color: var(--color-warn-text);
   }
   .selectable {
     user-select: text;
@@ -559,8 +575,8 @@
     color: var(--color-accent-text);
   }
   .tag-warn {
-    background: color-mix(in srgb, #d97706 18%, transparent);
-    color: color-mix(in srgb, #7c2d12 90%, var(--color-text));
+    background: var(--color-warn-100);
+    color: var(--color-warn-text);
   }
 
   /* — table — */

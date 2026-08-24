@@ -99,12 +99,12 @@
           class="flex shrink-0 items-center gap-2 px-4.5 py-1.5"
           style="border-bottom:1px solid var(--color-divider)"
         >
-          <span
-            class="text-muted flex-1 text-[11px] font-semibold uppercase"
+          <h2
+            class="text-muted m-0 flex-1 text-[11px] font-semibold uppercase"
             style="letter-spacing:0.08em"
           >
             {t("browse.content")}
-          </span>
+          </h2>
           <button type="button" class="btn btn-ghost" onclick={toggleFolders}>
             {app.open.size > 0 ? t("browse.collapseAll") : t("browse.expandAll")}
           </button>

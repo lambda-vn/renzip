@@ -11,6 +11,7 @@
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open, save } from "@tauri-apps/plugin-dialog";
 
+  import Icon from "./lib/Icon.svelte";
   import TitleBar from "./lib/TitleBar.svelte";
   import { launchPath, onProgress } from "./lib/api";
   import { formatSize } from "./lib/format";
@@ -190,6 +191,13 @@
   }
 </script>
 
+<a
+  href="#main-content"
+  class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-[var(--radius-md)] focus:bg-[var(--color-bg)] focus:px-3 focus:py-2 focus:text-[13px] focus:shadow-[var(--shadow-lg)]"
+>
+  {t("title.skipToContent")}
+</a>
+
 <div class="flex h-full flex-col">
   <TitleBar
     {subtitle}
@@ -199,7 +207,7 @@
     onsettings={app.view === "settings" ? undefined : () => (app.view = "settings")}
   />
 
-  <main class="flex min-h-0 flex-1 flex-col">
+  <main id="main-content" tabindex="-1" class="flex min-h-0 flex-1 flex-col">
     {#if app.view === "browse"}
       <BrowseView
         onopen={chooseArchive}
@@ -237,9 +245,12 @@
       </div>
     {/if}
 
-    <p aria-live="polite" class="m-0 min-h-5">
+    <p aria-live="polite" class="m-0 flex min-h-5 items-center gap-1.5">
       {#if app.status}
-        <span class={app.status.tone === "warn" ? "text-accent" : ""}>{app.status.text}</span>
+        {#if app.status.tone === "warn"}
+          <Icon name="warning" size={13} style="flex:none" label={t("status.warnLabel")} />
+        {/if}
+        <span class={app.status.tone === "warn" ? "text-warn" : ""}>{app.status.text}</span>
       {:else if app.archive && app.view === "browse"}
         <span class="text-muted">
           {app.archive.version} · {tn("count.entry", app.archive.entry_count)}
@@ -248,7 +259,8 @@
     </p>
 
     {#if app.archive && app.archive.multi_segment.length > 0 && app.view === "browse"}
-      <p class="text-accent m-0 text-[11px]">
+      <p class="text-warn m-0 flex items-center gap-1.5 text-[11px]">
+        <Icon name="warning" size={12} style="flex:none" label={t("status.warnLabel")} />
         {t("status.multiSegment", {
           count: tn("count.entry", app.archive.multi_segment.length),
         })}

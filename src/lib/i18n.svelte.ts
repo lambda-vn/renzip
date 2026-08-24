@@ -24,6 +24,8 @@ const MESSAGES = {
   "title.back": { fr: "Retour", en: "Back" },
   "title.settings": { fr: "Préférences", en: "Preferences" },
   "title.create": { fr: "Nouvelle archive", en: "New archive" },
+  "title.app": { fr: "RenZip", en: "RenZip" },
+  "title.skipToContent": { fr: "Aller au contenu", en: "Skip to content" },
 
   "dialog.openArchive": { fr: "Ouvrir une archive", en: "Open an archive" },
   "dialog.source": { fr: "Dossier à empaqueter", en: "Folder to pack" },
@@ -240,6 +242,7 @@ const MESSAGES = {
     en: "No application is associated with this type: the folder was opened on {path}",
   },
   "status.cancelled": { fr: ", interrompu", en: ", interrupted" },
+  "status.warnLabel": { fr: "Attention", en: "Warning" },
   "status.built": {
     fr: "Archive écrite : {count} ({size}) en {version}{cancelled}.",
     en: "Archive written: {count} ({size}) in {version}{cancelled}.",

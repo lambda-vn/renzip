@@ -94,7 +94,7 @@
     </button>
 
     <div>
-      <h6 class="m-0 mb-2.5">{t("create.staged")}</h6>
+      <h2 class="m-0 mb-2.5 text-[13px] tracking-[0.08em] uppercase">{t("create.staged")}</h2>
       {#if staged.length === 0}
         <p class="text-muted text-[13px]">{t("create.none")}</p>
       {:else}
@@ -143,7 +143,7 @@
     </div>
 
     <div>
-      <h6 class="m-0 mb-2">{t("create.version")}</h6>
+      <h2 class="m-0 mb-2 text-[13px] tracking-[0.08em] uppercase">{t("create.version")}</h2>
       <div class="seg" role="group" aria-label={t("create.versionAria")}>
         {#each VERSIONS as version (version.id)}
           <button
@@ -161,7 +161,7 @@
     </div>
 
     <div>
-      <h6 class="m-0 mb-2">{t("create.options")}</h6>
+      <h2 class="m-0 mb-2 text-[13px] tracking-[0.08em] uppercase">{t("create.options")}</h2>
       <label class="check" style="background:var(--color-bg)">
         <input
           type="checkbox"

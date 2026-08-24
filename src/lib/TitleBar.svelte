@@ -35,11 +35,12 @@
     </button>
   {/if}
 
-  {#if subtitle}
-    <span class="heading text-[15px]">{subtitle}</span>
-  {:else if archiveName}
-    <span class="heading text-[15px]">{archiveName}</span>
-  {/if}
+  <!--
+    The one h1 of the whole window: every screen names itself through this
+    same element, so a screen reader's heading list always starts here
+    instead of at whichever view-specific heading happens to come first.
+  -->
+  <h1 class="heading m-0 text-[15px]">{subtitle ?? archiveName ?? t("title.app")}</h1>
   {#if archivePath}
     <span class="tag tag-neutral max-w-100 truncate" title={archivePath}>{archivePath}</span>
   {/if}

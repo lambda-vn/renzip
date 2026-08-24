@@ -58,7 +58,7 @@
           style={section === item.id
             ? "background:var(--color-accent-fill);color:var(--color-on-accent);box-shadow:var(--shadow-accent)"
             : ""}
-          aria-current={section === item.id ? "true" : undefined}
+          aria-current={section === item.id ? "page" : undefined}
           onclick={() => (section = item.id)}
         >
           {t(item.label)}
@@ -69,7 +69,7 @@
 
   <div class="flex min-h-0 flex-col overflow-y-auto p-7" style="max-width:680px">
     {#if section === "general"}
-      <h3 class="m-0 mb-1">{t("settings.general")}</h3>
+      <h2 class="m-0 mb-1 text-[25px]">{t("settings.general")}</h2>
       <p class="text-muted text-[13px]">{t("settings.general.intro")}</p>
 
       <div
@@ -138,7 +138,7 @@
         </div>
       </div>
     {:else if section === "archives"}
-      <h3 class="m-0 mb-1">{t("settings.archives")}</h3>
+      <h2 class="m-0 mb-1 text-[25px]">{t("settings.archives")}</h2>
       <p class="text-muted text-[13px]">{t("settings.archives.intro")}</p>
 
       <div
@@ -188,7 +188,7 @@
       <div class="flex items-center gap-5">
         <img src={logo} alt="" width="104" height="104" />
         <div>
-          <h3 class="m-0">RenZip</h3>
+          <h2 class="m-0 text-[25px]">RenZip</h2>
           <p class="text-muted m-0 text-[13px]">{t("about.tagline")}</p>
           {#if version}
             <p class="nums m-0 mt-1 text-[13px]">{t("about.version", { version })}</p>

@@ -61,7 +61,7 @@
   style="border-left:1px solid var(--color-divider)"
   aria-label={t("panel.title")}
 >
-  <h6 class="m-0">{t("panel.title")}</h6>
+  <h2 class="m-0 text-[13px] tracking-[0.08em] uppercase">{t("panel.title")}</h2>
 
   {#if many}
     <div
