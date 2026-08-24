@@ -148,9 +148,13 @@
     }
   }
 
-  /** Ask where an extraction should write. */
+  /** Ask where an extraction should write, defaulting to the last one picked. */
   async function chooseDestDir(): Promise<boolean> {
-    const chosen = await open({ directory: true, title: t("dialog.extractTo") });
+    const chosen = await open({
+      directory: true,
+      title: t("dialog.extractTo"),
+      defaultPath: app.destDir || undefined,
+    });
     if (typeof chosen === "string") {
       app.destDir = chosen;
       return true;
@@ -159,7 +163,10 @@
   }
 
   /**
-   * Extract entries right away, asking for a destination if none is set yet.
+   * Extract entries right away, always asking where to.
+   *
+   * Every archive can go somewhere different, so the destination is never
+   * assumed from a previous extraction; the dialog just opens on it.
    *
    * @param paths - Entries to extract, or null for the whole archive.
    */
@@ -167,7 +174,7 @@
     if (paths !== null && paths.length === 0) {
       return;
     }
-    if (app.destDir === "" && !(await chooseDestDir())) {
+    if (!(await chooseDestDir())) {
       return;
     }
     await app.runExtraction(paths);
