@@ -82,6 +82,7 @@ const MESSAGES = {
   "menu.openWith": { fr: "Ouvrir avec…", en: "Open with…" },
   "menu.check": { fr: "Cocher", en: "Check" },
   "menu.uncheck": { fr: "Décocher", en: "Uncheck" },
+  "menu.remove": { fr: "Retirer", en: "Remove" },
   "menu.label": { fr: "Actions sur {name}", en: "Actions on {name}" },
 
   "panel.title": { fr: "Sélection", en: "Selection" },

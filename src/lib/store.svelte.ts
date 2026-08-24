@@ -30,6 +30,7 @@ import { formatSize } from "./format";
 import { setLanguage, t, tn } from "./i18n.svelte";
 import { kindKey, kindOf } from "./kinds";
 import { applyTheme, loadSettings, saveSettings, type Settings } from "./settings";
+import { buildSourceTree, visibleSourceRows } from "./sourceTree";
 import { buildTree, descendants, parentOf, visibleRows, type TreeRow } from "./tree";
 
 /** Which screen is showing. */
@@ -71,6 +72,10 @@ class AppStore {
 
   /** Directory picked on the creation screen, with what it holds. */
   source = $state<{ dir: string; report: ScanReport } | null>(null);
+  /** Files or folders of the staged directory left out of the build. */
+  excluded = new SvelteSet<string>();
+  /** Folders of the staged directory unfolded in the creation screen. */
+  stagedOpen = new SvelteSet<string>();
   /** Where the archive being created will be written. */
   destPath = $state("");
   /** Version the archive being created will announce. */
@@ -95,6 +100,15 @@ class AppStore {
   selectionSize = $derived(this.selected.size);
   /** What the selection holds, for the panel that stands in for a preview. */
   selection = $derived(this.summarize());
+
+  /** Staged files still due for the build, once dropped entries are out. */
+  stagedFiles = $derived(
+    (this.source?.report.files ?? []).filter((file) => !this.isExcluded(file.path)),
+  );
+  /** Folder tree of what is still staged. */
+  stagedTree = $derived(buildSourceTree(this.stagedFiles));
+  /** Rows of the staged content list: folders to unfold, and files. */
+  stagedRows = $derived(visibleSourceRows(this.stagedTree, this.stagedOpen));
 
   /** Apply the stored preferences as soon as the window has a document. */
   init(): void {
@@ -304,6 +318,33 @@ class AppStore {
     }
   }
 
+  /** Unfold or fold a folder of the staged content list. */
+  toggleStagedFolder(key: string): void {
+    if (this.stagedOpen.has(key)) {
+      this.stagedOpen.delete(key);
+    } else {
+      this.stagedOpen.add(key);
+    }
+  }
+
+  /**
+   * Whether a staged path was dropped from the build.
+   *
+   * A path is out once it, or a folder above it, was excluded: dropping
+   * "images" must also drop "images/bg.png" without every file needing its
+   * own entry in the set.
+   *
+   * @param path - Staged file path to test.
+   */
+  isExcluded(path: string): boolean {
+    for (const excluded of this.excluded) {
+      if (path === excluded || path.startsWith(`${excluded}/`)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /**
    * Read one entry and show it in the selection panel.
    *
@@ -367,6 +408,8 @@ class AppStore {
     try {
       const report = await scanDirectory(dir);
       this.source = { dir, report };
+      this.excluded.clear();
+      this.stagedOpen.clear();
       this.skipped = report.skipped;
       if (this.destPath === "") {
         this.destPath = "archive.rpa";
@@ -383,6 +426,16 @@ class AppStore {
     }
   }
 
+  /**
+   * Drop a file or folder of the staged directory from the next build.
+   *
+   * @param key - Archive name of a file, or path of a folder, as shown on
+   *   the creation screen. Dropping a folder drops everything under it.
+   */
+  excludeFromSource(key: string): void {
+    this.excluded.add(key);
+  }
+
   /** Pack the staged directory, then open the result to check it. */
   async runBuild(): Promise<void> {
     if (!this.source || this.destPath === "") {
@@ -394,7 +447,12 @@ class AppStore {
     this.skipped = [];
     this.progress = null;
     try {
-      const report = await buildArchive(this.source.dir, this.destPath, this.version);
+      const report = await buildArchive(
+        this.source.dir,
+        this.destPath,
+        this.version,
+        [...this.excluded],
+      );
       this.skipped = report.skipped;
       let text = t("status.built", {
         count: tn("count.packed", report.entries),

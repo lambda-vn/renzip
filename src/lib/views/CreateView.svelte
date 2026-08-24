@@ -6,6 +6,7 @@
    * code that will pack it, so what is shown here is what ends up inside.
    */
   import Icon from "../Icon.svelte";
+  import SourceTree from "../SourceTree.svelte";
   import { formatSize } from "../format";
   import { t, tn } from "../i18n.svelte";
   import { app } from "../store.svelte";
@@ -36,30 +37,12 @@
     t(VERSIONS.find((version) => version.id === app.version)?.note ?? "create.note.30"),
   );
 
-  /** Staged content, grouped by first folder the way the design shows it. */
-  let staged = $derived.by(() => {
-    const groups = new Map<string, { count: number; size: number }>();
-    for (const file of app.source?.report.files ?? []) {
-      const cut = file.path.indexOf("/");
-      const key = cut === -1 ? "." : `${file.path.slice(0, cut)}/`;
-      const group = groups.get(key) ?? { count: 0, size: 0 };
-      group.count += 1;
-      group.size += file.size;
-      groups.set(key, group);
-    }
-    return [...groups.entries()]
-      .map(([name, group]) => ({ name, ...group }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-  });
-
-  let totalSize = $derived(
-    (app.source?.report.files ?? []).reduce((total, file) => total + file.size, 0),
-  );
+  let totalSize = $derived(app.stagedFiles.reduce((total, file) => total + file.size, 0));
 </script>
 
 <div class="grid min-h-0 flex-1" style="grid-template-columns:1fr 350px">
   <div
-    class="flex min-h-0 flex-col gap-4 overflow-y-auto p-5"
+    class="flex min-h-0 flex-col gap-4 p-5"
     style="border-right:1px solid var(--color-divider)"
   >
     <button
@@ -93,27 +76,19 @@
       <span class="btn btn-secondary mt-4.5">{t("create.pick")}</span>
     </button>
 
-    <div>
-      <h2 class="m-0 mb-2.5 text-[13px] tracking-[0.08em] uppercase">{t("create.staged")}</h2>
-      {#if staged.length === 0}
+    <div class="flex min-h-0 flex-1 flex-col">
+      <h2 class="m-0 mb-2.5 shrink-0 text-[13px] tracking-[0.08em] uppercase">
+        {t("create.staged")}
+      </h2>
+      {#if app.stagedRows.length === 0}
         <p class="text-muted text-[13px]">{t("create.none")}</p>
       {:else}
-        <ul
-          class="nums overflow-hidden rounded-[var(--radius-md)] text-[13px]"
+        <div
+          class="min-h-0 flex-1 overflow-hidden rounded-[var(--radius-md)] text-[13px]"
           style="border:1px solid var(--color-divider);background:var(--color-bg);box-shadow:var(--shadow-sm)"
         >
-          {#each staged as group, index (group.name)}
-            <li
-              class="flex items-center gap-2.5 px-3.5 py-2.5"
-              style={index === 0 ? "" : "border-top:1px solid var(--color-divider)"}
-            >
-              <Icon name="folder" size={15} stroke={1.7} style="opacity:.7;flex:none" />
-              <span class="truncate">{group.name}</span>
-              <span class="text-muted">{tn("count.file", group.count)}</span>
-              <span class="ml-auto">{formatSize(group.size)}</span>
-            </li>
-          {/each}
-        </ul>
+          <SourceTree />
+        </div>
       {/if}
     </div>
   </div>
@@ -177,7 +152,7 @@
       <div class="flex justify-between py-1">
         <span class="text-muted">{t("create.input")}</span>
         <span>
-          {formatSize(totalSize)} · {tn("count.file", app.source?.report.files.length ?? 0)}
+          {formatSize(totalSize)} · {tn("count.file", app.stagedFiles.length)}
         </span>
       </div>
       <div class="flex justify-between py-1">

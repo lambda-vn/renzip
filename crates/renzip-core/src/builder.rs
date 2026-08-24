@@ -86,6 +86,11 @@ pub fn scan(source_dir: &Path) -> Result<ScanReport> {
 
 /// Pack every file under `source_dir` into a new archive at `dest_path`.
 ///
+/// `excludes` names files or folders below `source_dir` (each an archive
+/// path, with no trailing separator on a folder) to leave out, the way the
+/// creation screen lets a user drop something they staged by mistake, at
+/// any depth, before committing to a build.
+///
 /// `on_progress` is called once per stored file and stops the build when it
 /// returns `false`; a cancelled build leaves a partial file behind, which the
 /// caller is expected to delete.
@@ -100,6 +105,7 @@ pub fn build(
     dest_path: &Path,
     version: Version,
     key: u64,
+    excludes: &[String],
     on_progress: &mut dyn FnMut(&Progress<'_>) -> bool,
 ) -> Result<BuildReport> {
     // Fail on an unwritable version before touching the file system, so that
@@ -108,7 +114,11 @@ pub fn build(
     let key = if version == Version::Rpa2_0 { 0 } else { key };
 
     let scanned = scan(source_dir)?;
-    let files = scanned.files;
+    let files: Vec<SourceFile> = scanned
+        .files
+        .into_iter()
+        .filter(|file| !is_excluded(&file.path, excludes))
+        .collect();
     let mut report = BuildReport {
         skipped: scanned.skipped,
         ..BuildReport::default()
@@ -233,6 +243,18 @@ fn collect_files(
         }
     }
     Ok(())
+}
+
+/// Whether `path` falls under one of the `excludes`, at any depth.
+///
+/// An exclude matches a whole file (`"readme.txt"`) or everything below a
+/// folder (`"images"` drops `"images/bg.png"`, and `"images/ui"` drops only
+/// what sits under that nested folder), never a partial name, so `"image"`
+/// never drops `"images/bg.png"`.
+fn is_excluded(path: &str, excludes: &[String]) -> bool {
+    excludes
+        .iter()
+        .any(|excluded| path == excluded || path.starts_with(&format!("{excluded}/")))
 }
 
 /// Name a file gets inside the archive: its path below the root, with '/'.

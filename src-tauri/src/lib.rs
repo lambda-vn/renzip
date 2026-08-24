@@ -359,6 +359,7 @@ async fn build_archive(
     source_dir: String,
     dest_path: String,
     version: String,
+    excludes: Vec<String>,
 ) -> Result<renzip_core::BuildReport, String> {
     let version = match version.as_str() {
         "RPA-2.0" => Version::Rpa2_0,
@@ -375,6 +376,7 @@ async fn build_archive(
             Path::new(&dest_path),
             version,
             renzip_core::DEFAULT_KEY,
+            &excludes,
             &mut |progress| {
                 emitter.emit(progress);
                 !cancel.load(Ordering::Relaxed)

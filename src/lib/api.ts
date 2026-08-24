@@ -165,13 +165,19 @@ export function cancelExtraction(handle: number): Promise<void> {
   return invoke<void>("cancel_extraction", { handle });
 }
 
-/** Pack a directory into a new archive. */
+/**
+ * Pack a directory into a new archive.
+ *
+ * @param excludes - Files or folders of `sourceDir` to leave out, at any
+ *   depth, each an archive path with no trailing separator on a folder.
+ */
 export function buildArchive(
   sourceDir: string,
   destPath: string,
   version: string,
+  excludes: string[],
 ): Promise<BuildReport> {
-  return invoke<BuildReport>("build_archive", { sourceDir, destPath, version });
+  return invoke<BuildReport>("build_archive", { sourceDir, destPath, version, excludes });
 }
 
 /** Ask the running build to stop. */

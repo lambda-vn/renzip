@@ -45,6 +45,7 @@ fn build_open_extract_returns_identical_files() {
             &archive_path,
             version,
             renzip_core::DEFAULT_KEY,
+            &[],
             &mut |_| true,
         )
         .unwrap();
@@ -102,6 +103,7 @@ fn an_archive_this_crate_writes_is_read_back_by_python() {
         &archive_path,
         Version::Rpa3_0,
         renzip_core::DEFAULT_KEY,
+        &[],
         &mut |_| true,
     )
     .unwrap();
@@ -153,6 +155,7 @@ fn a_flat_extraction_drops_folders_and_refuses_to_overwrite_a_name_twice() {
         &archive_path,
         Version::Rpa3_0,
         renzip_core::DEFAULT_KEY,
+        &[],
         &mut |_| true,
     )
     .unwrap();
@@ -209,6 +212,38 @@ fn scan_lists_what_a_build_would_pack() {
 }
 
 #[test]
+fn excluded_top_level_entries_are_left_out_of_a_build() {
+    let work = tempfile::tempdir().unwrap();
+    let source = work.path().join("source");
+    let archive_path = work.path().join("built.rpa");
+    write_sources(&source);
+
+    // "images" drops the whole folder, "empty.dat" drops that one file; a
+    // folder whose name only starts with "gui" must not also be caught.
+    let excludes = ["images".to_string(), "empty.dat".to_string()];
+    let report = renzip_core::build(
+        &source,
+        &archive_path,
+        Version::Rpa3_0,
+        renzip_core::DEFAULT_KEY,
+        &excludes,
+        &mut |_| true,
+    )
+    .unwrap();
+    assert_eq!(report.entries, 2, "{report:?}");
+
+    let archive = Archive::open(&archive_path).unwrap();
+    assert_eq!(
+        archive
+            .entries()
+            .iter()
+            .map(|entry| entry.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["gui/nested/deep/notes.txt", "script.rpy"]
+    );
+}
+
+#[test]
 fn an_archive_built_from_an_empty_directory_opens_empty() {
     let work = tempfile::tempdir().unwrap();
     let source = work.path().join("source");
@@ -220,6 +255,7 @@ fn an_archive_built_from_an_empty_directory_opens_empty() {
         &archive_path,
         Version::Rpa3_0,
         renzip_core::DEFAULT_KEY,
+        &[],
         &mut |_| true,
     )
     .unwrap();
@@ -242,6 +278,7 @@ fn versions_this_crate_cannot_write_are_refused_before_any_file_is_touched() {
         &archive_path,
         Version::Rpa3_2,
         renzip_core::DEFAULT_KEY,
+        &[],
         &mut |_| true,
     )
     .unwrap_err();

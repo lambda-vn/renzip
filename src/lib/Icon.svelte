@@ -47,6 +47,7 @@
       "M12 9v4",
       "M12 17h.01",
     ],
+    close: ["M6 6l12 12", "M18 6 6 18"],
   } as const;
 
   /** Name of one of the icons above. */
