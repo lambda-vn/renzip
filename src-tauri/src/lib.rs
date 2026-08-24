@@ -245,14 +245,20 @@ async fn open_entry(
     let dest = session.scratch.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
+        // Each entry gets a subfolder of its own: flat by name would let two
+        // entries that share a file name in different archive folders (two
+        // "script.rpy" from two chapters, say) overwrite each other's copy,
+        // since every "open" is its own extraction with no memory of the one
+        // before it. Keying the subfolder on the entry's full archive path
+        // keeps the name flat inside it while different paths never collide,
+        // and reopening the same entry reuses the same file instead of
+        // piling up copies.
+        let entry_dir = dest.join(scratch_subdir(&path));
         let mut archive = Archive::open(&archive_path).map_err(|e| e.to_string())?;
         let report = archive
             .extract(
                 Selection::Paths(std::slice::from_ref(&path)),
-                &dest,
-                // Flat on purpose: the folders of the archive have no meaning
-                // in a scratch directory, and a file two levels down would be
-                // harder to find than the one file that was asked for.
+                &entry_dir,
                 Layout::Flat,
                 &mut |_| true,
             )
@@ -262,7 +268,7 @@ async fn open_entry(
         }
 
         let name = path.rsplit('/').next().unwrap_or(&path);
-        let written = dest.join(name);
+        let written = entry_dir.join(name);
         let location = written.display().to_string();
 
         // What the desktop intends to do decides both whether handing the
@@ -435,6 +441,44 @@ fn file_name(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
+/// Subfolder of the scratch directory a single entry's "open" copy lives in.
+///
+/// Derived from the entry's full path inside the archive, not just its file
+/// name, so that "chapter1/ep1.rpy" and "chapter2/ep1.rpy" never claim the
+/// same file: the same entry hashes to the same subfolder every time, and two
+/// different ones practically never share one.
+fn scratch_subdir(entry_path: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    entry_path.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+/// The .rpa path RenZip was started with, if the desktop handed it one.
+///
+/// Read once at startup and handed to the window on request, rather than
+/// pushed as an event: the frontend is not listening for anything yet at the
+/// instant this is known, but it can always ask.
+struct LaunchPath(Option<String>);
+
+/// Give the window the path it was launched to open, if there was one.
+#[tauri::command]
+fn launch_path(state: State<'_, LaunchPath>) -> Option<String> {
+    state.0.clone()
+}
+
+/// Pick the .rpa path out of the command line, if the desktop opened one.
+///
+/// Double-clicking a file, or using "Open with" on one, starts this process
+/// with the file's path as its first argument. Anything else the command
+/// line might carry is not a path this looks for.
+fn launch_path_from_args(args: impl Iterator<Item = String>) -> Option<String> {
+    args.skip(1)
+        .find(|arg| arg.to_lowercase().ends_with(".rpa"))
+}
+
 /// Build and run the application.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -444,6 +488,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             app.manage(AppState::default());
+            app.manage(LaunchPath(launch_path_from_args(std::env::args())));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -458,6 +503,7 @@ pub fn run() {
             cancel_extraction,
             build_archive,
             cancel_build,
+            launch_path,
         ])
         .build(tauri::generate_context!())
         .expect("error while starting RenZip")
@@ -469,4 +515,45 @@ pub fn run() {
                 app.state::<AppState>().close_all();
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{launch_path_from_args, scratch_subdir};
+
+    #[test]
+    fn same_name_in_different_folders_gets_different_subfolders() {
+        let first = scratch_subdir("chapter1/ep1.rpy");
+        let second = scratch_subdir("chapter2/ep1.rpy");
+        assert_ne!(
+            first, second,
+            "two entries with the same file name in different archive \
+             folders must not share an open-entry scratch subfolder"
+        );
+    }
+
+    #[test]
+    fn the_same_entry_always_gets_the_same_subfolder() {
+        assert_eq!(
+            scratch_subdir("chapter1/ep1.rpy"),
+            scratch_subdir("chapter1/ep1.rpy")
+        );
+    }
+
+    #[test]
+    fn finds_the_rpa_path_the_desktop_launched_with() {
+        let args = ["renzip.exe", "C:\\Games\\Story\\game.RPA"]
+            .into_iter()
+            .map(String::from);
+        assert_eq!(
+            launch_path_from_args(args),
+            Some("C:\\Games\\Story\\game.RPA".to_string())
+        );
+    }
+
+    #[test]
+    fn no_launch_path_without_an_rpa_argument() {
+        let args = ["renzip.exe"].into_iter().map(String::from);
+        assert_eq!(launch_path_from_args(args), None);
+    }
 }

@@ -12,7 +12,7 @@
   import { open, save } from "@tauri-apps/plugin-dialog";
 
   import TitleBar from "./lib/TitleBar.svelte";
-  import { onProgress } from "./lib/api";
+  import { launchPath, onProgress } from "./lib/api";
   import { formatSize } from "./lib/format";
   import { t, tn } from "./lib/i18n.svelte";
   import { app } from "./lib/store.svelte";
@@ -38,6 +38,15 @@
 
   onMount(() => {
     app.init();
+    void launchPath()
+      .then((path) => {
+        if (path) {
+          void app.load(path);
+        }
+      })
+      .catch((error: unknown) => {
+        console.warn("renzip: could not read the launch path", error);
+      });
     const stops = [
       // A block body, not an arrow returning the assignment: Svelte warns
       // that such an expression evaluates to the right-hand side rather than

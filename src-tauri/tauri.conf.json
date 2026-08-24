@@ -36,6 +36,15 @@
     ],
     "copyright": "Copyright (C) 2026 lambda-vn, CeCILL-2.1",
     "shortDescription": "Gestionnaire d'archives Ren'Py (.rpa)",
-    "longDescription": "Ouvrir, inspecter, extraire et reconstruire les archives .rpa des visual novels Ren'Py."
+    "longDescription": "Ouvrir, inspecter, extraire et reconstruire les archives .rpa des visual novels Ren'Py.",
+    "fileAssociations": [
+      {
+        "ext": ["rpa"],
+        "name": "RenZip.Archive",
+        "description": "Archive Ren'Py",
+        "mimeType": "application/x-renpy-archive",
+        "role": "Editor"
+      }
+    ]
   }
 }

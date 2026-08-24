@@ -179,6 +179,11 @@ export function cancelBuild(): Promise<void> {
   return invoke<void>("cancel_build");
 }
 
+/** The .rpa path the desktop launched RenZip with, if there was one. */
+export function launchPath(): Promise<string | null> {
+  return invoke<string | null>("launch_path");
+}
+
 /** Subscribe to progress events until the returned function is called. */
 export function onProgress(
   handler: (payload: ProgressPayload) => void,
