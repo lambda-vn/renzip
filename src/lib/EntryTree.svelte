@@ -126,9 +126,7 @@
         break;
       case "a":
         if (event.ctrlKey || event.metaKey) {
-          for (const entry of app.entries) {
-            app.selected.add(entry.path);
-          }
+          app.selectAll();
           break;
         }
         return;

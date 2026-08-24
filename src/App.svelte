@@ -6,7 +6,7 @@
    * The screens live in lib/views; everything they share is in
    * lib/store.svelte.ts.
    */
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import { getCurrentWebview } from "@tauri-apps/api/webview";
   import { open, save } from "@tauri-apps/plugin-dialog";
@@ -189,7 +189,60 @@
     }
     await app.runExtraction(paths);
   }
+
+  /** True when a shortcut here would collide with typing into this element. */
+  function isTextEntry(target: EventTarget | null): boolean {
+    return (
+      target instanceof HTMLElement &&
+      (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+    );
+  }
+
+  /**
+   * Shortcuts that work anywhere in the window, not only inside whichever
+   * element happens to hold the keyboard.
+   *
+   * F5 and Ctrl+R already mean "reload" to the webview underneath this
+   * interface; left uncaught they would throw the whole window's state away
+   * rather than just refresh what the archive holds, so both are redirected
+   * at the one thing here worth reloading.
+   *
+   * @param event - The key event.
+   */
+  function onGlobalKeydown(event: KeyboardEvent): void {
+    const held = event.ctrlKey || event.metaKey;
+    const key = event.key.toLowerCase();
+
+    if (event.key === "F5" || (held && key === "r")) {
+      event.preventDefault();
+      void app.refresh();
+      return;
+    }
+    if (held && key === "o") {
+      event.preventDefault();
+      void chooseArchive();
+      return;
+    }
+    if (held && key === "f") {
+      if (!app.archive) {
+        return;
+      }
+      event.preventDefault();
+      app.view = "browse";
+      // The search box only exists once this switch has actually rendered.
+      void tick().then(() => {
+        document.getElementById("archive-search")?.focus();
+      });
+      return;
+    }
+    if (held && key === "a" && !isTextEntry(event.target)) {
+      event.preventDefault();
+      app.selectAll();
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onGlobalKeydown} />
 
 <a
   href="#main-content"

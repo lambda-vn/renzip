@@ -63,6 +63,7 @@
     <label class="search w-80">
       <Icon name="search" size={14} style="opacity:.5;flex:none" />
       <input
+        id="archive-search"
         type="search"
         bind:value={app.filter}
         placeholder={t("browse.filter")}

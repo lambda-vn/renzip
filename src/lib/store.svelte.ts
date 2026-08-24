@@ -204,6 +204,59 @@ class AppStore {
     }
   }
 
+  /**
+   * Re-read the open archive from disk, keeping what the window shows.
+   *
+   * Unlike load(), the search, the folders left open and the selection all
+   * survive: F5 is meant to catch up with a file that changed on disk, not
+   * to put the window back to how it looked when the archive was first
+   * opened. An entry a refresh no longer finds is simply dropped from the
+   * selection, and from the panel if it was the one shown.
+   */
+  async refresh(): Promise<void> {
+    if (!this.archive || this.busy) {
+      return;
+    }
+    const path = this.archive.path;
+    const currentPath = this.current?.path;
+    try {
+      await closeArchive(this.archive.handle);
+      const summary = await openArchive(path);
+      const entries = await listEntries(summary.handle);
+      const byPath = new Map(entries.map((entry) => [entry.path, entry]));
+
+      for (const selected of [...this.selected]) {
+        if (!byPath.has(selected)) {
+          this.selected.delete(selected);
+        }
+      }
+
+      this.archive = summary;
+      this.entries = entries;
+      this.skipped = summary.rejected;
+      this.status =
+        summary.rejected.length > 0
+          ? { tone: "warn", text: tn("count.rejected", summary.rejected.length) }
+          : { tone: "info", text: t("status.refreshed") };
+
+      const stillThere = currentPath ? byPath.get(currentPath) : undefined;
+      if (stillThere) {
+        await this.show(stillThere, true);
+      } else {
+        this.current = null;
+        this.preview = null;
+      }
+    } catch (error) {
+      this.archive = null;
+      this.entries = [];
+      this.current = null;
+      this.preview = null;
+      this.selected.clear();
+      this.skipped = [];
+      this.status = { tone: "warn", text: String(error) };
+    }
+  }
+
   /** Unfold or fold a folder of the list. */
   toggleFolder(key: string): void {
     if (this.open.has(key)) {
@@ -241,6 +294,13 @@ class AppStore {
       } else {
         this.selected.add(path);
       }
+    }
+  }
+
+  /** Put every entry of the archive in the selection. */
+  selectAll(): void {
+    for (const entry of this.entries) {
+      this.selected.add(entry.path);
     }
   }
 

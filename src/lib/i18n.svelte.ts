@@ -243,6 +243,7 @@ const MESSAGES = {
   },
   "status.cancelled": { fr: ", interrompu", en: ", interrupted" },
   "status.warnLabel": { fr: "Attention", en: "Warning" },
+  "status.refreshed": { fr: "Archive actualisée.", en: "Archive refreshed." },
   "status.built": {
     fr: "Archive écrite : {count} ({size}) en {version}{cancelled}.",
     en: "Archive written: {count} ({size}) in {version}{cancelled}.",
