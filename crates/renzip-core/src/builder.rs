@@ -21,8 +21,9 @@ use crate::path as safe_path;
 /// Key written into an RPA-3.0 header when the caller has no opinion.
 ///
 /// The value is arbitrary: the key obfuscates offsets, it protects nothing.
-/// Ren'Py ships the same constant, which makes an archive built here look
-/// exactly like one built by the engine.
+/// It is rpatool's default, not Ren'Py's own archiver's - that one always
+/// uses `0x42424242` - kept here as this crate's own default rather than
+/// changed to match, since nothing reads either value as meaningful.
 pub const DEFAULT_KEY: u64 = 0xDEAD_BEEF;
 
 /// One file found under a source directory.

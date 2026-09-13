@@ -1,11 +1,14 @@
 //! Detection and parsing of the .rpa header line.
 //!
 //! Cross-checked against renpy/loader.py (function `index_archive` in the
-//! official renpy/renpy repository): for RPA-3.0 the engine reads the offset
-//! from bytes 8..24 of the header line and folds every remaining
-//! whitespace-separated hex word into the key with XOR. RPA-3.2 shifts that
-//! fold one word further, since its header carries an extra field between the
-//! offset and the key.
+//! official renpy/renpy repository, every tag from 6.18 to 8.5.3): for
+//! RPA-3.0 the engine reads the key from a single field, `int(l[25:33], 16)`,
+//! and nowhere folds several header words together. Folding every remaining
+//! whitespace-separated hex word into the key by XOR is rpatool's behavior
+//! (commit 5a3b12c, 2016), not the engine's; it is kept here anyway; a
+//! single-subkey header still parses the same way, and it is what lets an
+//! RPA-3.2 header (one extra field before the key) parse without a special
+//! case beyond starting the fold one word later.
 
 use crate::error::{Error, Result};
 

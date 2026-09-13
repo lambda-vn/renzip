@@ -55,10 +55,14 @@ archive instant.
 | RPA-3.0 | yes | yes | Offsets and lengths obfuscated by XOR with a key |
 | RPA-3.2 | yes | no | One extra header field before the key |
 
-3.2 is offered nowhere as a write target: its extra header field is not
-documented by any reference implementation, and writing a plausible guess into
-an archive a game engine will read is a worse outcome than refusing. The
-settings screen says so rather than hiding the option.
+3.2 is offered nowhere as a write target. Its header shape is no longer a
+mystery - offset, an extra unused field, then the key (confirmed by the
+developer of Zeliria Sanctuary, the one known game shipping it, and by
+Shizmob/rpatool#9) - so this crate could write one. But no standard Ren'Py
+build reads RPA-3.2 at all: a game that opens one embeds a modified loader,
+so writing an archive the engine itself cannot read would be a worse outcome
+than refusing, whatever the header says. The settings screen says so rather
+than hiding the option.
 
 Two things the format simply does not hold, and that the window therefore does
 not show: a checksum and a modification date. Nor a compressed size, since
@@ -129,10 +133,12 @@ Unit tests beside the code, integration tests in
   the files are identical byte for byte. That is the test that catches a
   mistake in the `prefix` handling or in a bound.
 
-The fixtures cover an RPA-2.0, an RPA-3.0, an RPA-3.2, a legacy 1.0 with its
-`.rpi`, an archive whose entries carry a prefix, an empty one, a truncated
-one, one declaring bytes past the end of the file, one with several segments
-per entry, and one full of hostile paths.
+The fixtures cover an RPA-2.0, an RPA-3.0, an RPA-3.2, a legacy 1.0 archive
+with files split into several blocks, an archive written the way Ren'Py's own
+archiver does, one whose entries carry a prefix, an empty one, a truncated
+one, one declaring bytes past the end of the file, one whose entries
+concatenate several segments, one with a segment no reader can make sense of
+either, and one full of hostile paths.
 
 ```bash
 cargo test --workspace
