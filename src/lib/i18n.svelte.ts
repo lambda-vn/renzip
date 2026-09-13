@@ -277,10 +277,6 @@ const MESSAGES = {
     fr: "Détail des entrées non traitées ({count})",
     en: "Untouched entries in detail ({count})",
   },
-  "status.multiSegment": {
-    fr: "{count} décrite(s) par plusieurs blocs : seul le premier est lu, comme le fait Ren'Py.",
-    en: "{count} described by several blocks: only the first is read, as Ren'Py does.",
-  },
   "status.notAnArchive": {
     fr: "Ce fichier n'est pas une archive .rpa.",
     en: "This file is not a .rpa archive.",

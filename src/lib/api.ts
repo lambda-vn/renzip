@@ -25,7 +25,6 @@ export type ArchiveSummary = {
   total_size: number;
   file_size: number;
   rejected: Rejection[];
-  multi_segment: string[];
 };
 
 /** One entry of an open archive. */

@@ -334,15 +334,6 @@
       {/if}
     </p>
 
-    {#if app.archive && app.archive.multi_segment.length > 0 && app.view === "browse"}
-      <p class="text-warn m-0 flex items-center gap-1.5 text-[11px]">
-        <Icon name="warning" size={12} style="flex:none" label={t("status.warnLabel")} />
-        {t("status.multiSegment", {
-          count: tn("count.entry", app.archive.multi_segment.length),
-        })}
-      </p>
-    {/if}
-
     {#if app.skipped.length > 0}
       <details class="mt-1 text-[11px]">
         <summary class="cursor-pointer">
