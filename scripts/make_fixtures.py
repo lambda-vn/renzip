@@ -44,10 +44,10 @@ def header_line(version: str, offset: int, key: int) -> bytes:
     if version == "RPA-3.0":
         return b"RPA-3.0 %016x %08x\n" % (offset, key)
     if version == "RPA-3.2":
-        # The field between the offset and the key is the part of RPA-3.2
-        # that is least certain; rpatool skips it and folds every word from
-        # the fourth on into the key, which is what renzip does too.
-        return b"RPA-3.2 %016x 1 %08x\n" % (offset, key)
+        # "F" is the literal middle field seen in an actual RPA-3.2 archive
+        # (Zeliria Sanctuary, Shizmob/rpatool#9); it is not a placeholder for
+        # something else, the format just carries an unused field there.
+        return b"RPA-3.2 %016x F %08x\n" % (offset, key)
     raise ValueError(f"unknown version {version}")
 
 

@@ -137,7 +137,9 @@ mod tests {
 
     #[test]
     fn rpa_3_2_skips_the_extra_field() {
-        let header = parse_line("RPA-3.2 0000000000000010 1 deadbeef").unwrap();
+        // "F" is the literal middle field seen in an actual RPA-3.2 archive
+        // (Zeliria Sanctuary, Shizmob/rpatool#9), not a placeholder.
+        let header = parse_line("RPA-3.2 0000000000000010 F deadbeef").unwrap();
         assert_eq!(header.version, Version::Rpa3_2);
         assert_eq!(header.index_offset, 0x10);
         assert_eq!(header.key, 0xdead_beef);
