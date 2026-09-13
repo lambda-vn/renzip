@@ -79,8 +79,6 @@ const MESSAGES = {
   "menu.open": { fr: "Ouvrir", en: "Open" },
   "menu.open.hint": { fr: "copie temporaire", en: "temporary copy" },
   "menu.openWith": { fr: "Ouvrir avec…", en: "Open with…" },
-  "menu.check": { fr: "Cocher", en: "Check" },
-  "menu.uncheck": { fr: "Décocher", en: "Uncheck" },
   "menu.remove": { fr: "Retirer", en: "Remove" },
   "menu.label": { fr: "Actions sur {name}", en: "Actions on {name}" },
 
@@ -120,17 +118,8 @@ const MESSAGES = {
 
   "create.drop.title": { fr: "Déposez vos fichiers ici", en: "Drop your files here" },
   "create.drop.titleActive": { fr: "Relâchez pour ajouter", en: "Release to add" },
-  "create.drop.sub": {
-    fr: "Un dossier de jeu, ou n'importe quel dossier à empaqueter.",
-    en: "A game folder, or any folder to pack.",
-  },
-  "create.drop.subActive": {
-    fr: "Le dossier déposé sera empaqueté.",
-    en: "The dropped folder will be packed.",
-  },
   "create.pick": { fr: "Choisir un dossier…", en: "Choose a folder…" },
   "create.staged": { fr: "Contenu préparé", en: "Staged content" },
-  "create.name": { fr: "Nom de l'archive", en: "Archive name" },
   "create.version": { fr: "Version RPA", en: "RPA version" },
   "create.note.30": {
     fr: "RPA-3.0 : le format qu'écrit Ren'Py et que lisent les outils tiers.",
@@ -276,10 +265,6 @@ const MESSAGES = {
   "status.skippedDetail": {
     fr: "Détail des entrées non traitées ({count})",
     en: "Untouched entries in detail ({count})",
-  },
-  "status.notAnArchive": {
-    fr: "Ce fichier n'est pas une archive .rpa.",
-    en: "This file is not a .rpa archive.",
   },
 
   "reason.unreadable_segments": {
