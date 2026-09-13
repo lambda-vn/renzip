@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Only what the main window needs: the core API, the native file dialogs used to pick an archive, a destination directory and a target file, and writing an entry name to the clipboard. Handing a file to the desktop is deliberately absent: the row menu goes through the open_entry command instead, which builds the path itself, so no command taking an arbitrary path to open is reachable from the window.",
+  "description": "Only what the main window needs: the core API, the native file dialogs used to pick an archive, a destination directory and a target file, a message dialog to explain what a scan left out, and writing an entry name to the clipboard. Handing a file to the desktop is deliberately absent: the row menu goes through the open_entry command instead, which builds the path itself, so no command taking an arbitrary path to open is reachable from the window.",
   "windows": ["main"],
   "permissions": ["core:default", "dialog:default", "clipboard-manager:allow-write-text"]
 }

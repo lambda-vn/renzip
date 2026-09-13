@@ -156,6 +156,11 @@ const MESSAGES = {
     fr: "Déposez un seul dossier : celui qui contient tout ce que vous voulez empaqueter. Ce qui ne doit pas y figurer peut être retiré une fois le dossier chargé.",
     en: "Drop a single folder: the one containing everything you want to pack. Anything that should not be in it can be dropped once the folder is loaded.",
   },
+  "create.archivesSkipped.title": { fr: "Fichiers ignorés", en: "Files skipped" },
+  "create.archivesSkipped.body": {
+    fr: "Ren'Py n'ouvre jamais une archive rangée dans une autre. Ignorés dans ce dossier : {count}.\n\n{list}",
+    en: "Ren'Py never opens an archive packed inside another. Skipped in this folder: {count}.\n\n{list}",
+  },
 
   "settings.general": { fr: "Général", en: "General" },
   "settings.archives": { fr: "Archives", en: "Archives" },

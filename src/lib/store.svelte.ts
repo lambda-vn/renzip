@@ -6,6 +6,7 @@
  * through props.
  */
 
+import { message } from "@tauri-apps/plugin-dialog";
 import { SvelteSet } from "svelte/reactivity";
 
 import {
@@ -417,6 +418,7 @@ class AppStore {
           report.files.reduce((total, file) => total + file.size, 0),
         )}).`,
       };
+      await warnAboutSkippedArchives(report.skipped);
     } catch (error) {
       this.source = null;
       this.status = { tone: "warn", text: String(error) };
@@ -524,6 +526,34 @@ class AppStore {
       this.version = patch.defaultVersion;
     }
   }
+}
+
+/**
+ * Explain, once, that scan already left every .rpa/.rpi out of what was just
+ * staged.
+ *
+ * Ren'Py never opens an archive packed inside another, so these were never
+ * going into the build regardless; without this, that only shows up as an
+ * unlabeled gap between what a folder holds and what got staged, the first
+ * time someone stages one with an old archive still sitting in it.
+ *
+ * @param skipped - Everything scan left out, most of it for unrelated
+ *   reasons (a symbolic link, an unusable name).
+ */
+async function warnAboutSkippedArchives(skipped: Rejection[]): Promise<void> {
+  const archives = skipped.filter((item) => /\.(rpa|rpi)$/i.test(item.path));
+  if (archives.length === 0) {
+    return;
+  }
+  const shown = archives.slice(0, 5);
+  const remaining = archives.length - shown.length;
+  const list =
+    shown.map((item) => `- ${item.path}`).join("\n") +
+    (remaining > 0 ? `\n${tn("count.other", remaining)}` : "");
+  await message(
+    t("create.archivesSkipped.body", { count: tn("count.file", archives.length), list }),
+    { title: t("create.archivesSkipped.title"), kind: "info" },
+  );
 }
 
 /** The store, shared by every view. */
