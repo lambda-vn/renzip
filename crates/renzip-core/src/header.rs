@@ -71,7 +71,9 @@ pub const MAX_HEADER_LEN: usize = 128;
 /// [`Error::UnsupportedHeader`] when the magic is unknown, a field is
 /// missing, or a hexadecimal field does not parse.
 pub fn parse_line(line: &str) -> Result<Header> {
-    let unsupported = || Error::UnsupportedHeader(line.to_string());
+    let unsupported = || Error::UnsupportedHeader {
+        header: line.to_string(),
+    };
 
     let mut parts = line.split_whitespace();
     let magic = parts.next().ok_or_else(unsupported)?;
@@ -115,7 +117,9 @@ pub fn format_line(version: Version, index_offset: u64, key: u64) -> Result<Stri
     match version {
         Version::Rpa2_0 => Ok(format!("RPA-2.0 {index_offset:016x}\n")),
         Version::Rpa3_0 => Ok(format!("RPA-3.0 {index_offset:016x} {key:08x}\n")),
-        other => Err(Error::UnsupportedWriteVersion(other.as_str())),
+        other => Err(Error::UnsupportedWriteVersion {
+            version: other.as_str(),
+        }),
     }
 }
 

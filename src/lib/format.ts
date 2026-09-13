@@ -1,7 +1,21 @@
 /** Small formatting helpers shared by the views. */
 
-import type { PathRejection, Reason } from "./api";
+import type { CommandError, PathRejection, Reason } from "./api";
 import { currentLanguage, currentLocale, formatNumber, t } from "./i18n.svelte";
+
+/**
+ * Details of a reason or an error, ready to go into a message: numbers are
+ * written the way the interface language writes them.
+ *
+ * @param details - Fields that come with a code, the code itself excluded.
+ */
+function localized(details: Record<string, string | number>): Record<string, string | number> {
+  const values: Record<string, string | number> = {};
+  for (const [name, value] of Object.entries(details)) {
+    values[name] = typeof value === "number" ? formatNumber(value) : value;
+  }
+  return values;
+}
 
 /**
  * Say why an entry path was refused, in the interface language.
@@ -32,11 +46,47 @@ export function describeReason(reason: Reason): string {
       });
     default: {
       const { code, ...details } = reason;
-      const values: Record<string, string | number> = {};
-      for (const [name, value] of Object.entries(details)) {
-        values[name] = typeof value === "number" ? formatNumber(value) : value;
-      }
-      return t(`reason.${code}`, values);
+      return t(`reason.${code}`, localized(details));
+    }
+  }
+}
+
+/**
+ * Say why a command failed, in the interface language.
+ *
+ * A backend error arrives as a code and its details, like a reason; anything
+ * else a call can reject with (a plugin, the browser itself) is shown as it
+ * comes.
+ *
+ * @param error - Whatever the failed call rejected with.
+ */
+export function describeError(error: unknown): string {
+  if (typeof error !== "object" || error === null || !("code" in error)) {
+    return String(error);
+  }
+  const failure = error as CommandError;
+  switch (failure.code) {
+    case "corrupt_index": {
+      const { kind, ...details } = failure.problem;
+      return t("error.corrupt_index", { problem: t(`index.${kind}`, localized(details)) });
+    }
+    case "truncated": {
+      const { kind, ...details } = failure.truncation;
+      return t(`error.truncated.${kind}`, localized(details));
+    }
+    case "invalid_destination":
+    case "invalid_source":
+      return failure.error === null
+        ? t(`error.${failure.code}.not_a_directory`, { path: failure.path })
+        : t(`error.${failure.code}`, { path: failure.path, error: failure.error });
+    case "entry_skipped":
+      return t("error.entry_skipped", {
+        entry: failure.entry,
+        reason: describeReason(failure.reason),
+      });
+    default: {
+      const { code, ...details } = failure;
+      return t(`error.${code}`, localized(details));
     }
   }
 }

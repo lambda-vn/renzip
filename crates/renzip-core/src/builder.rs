@@ -71,7 +71,7 @@ pub fn scan(source_dir: &Path) -> Result<ScanReport> {
     if !source_dir.is_dir() {
         return Err(Error::InvalidSource {
             path: source_dir.to_path_buf(),
-            reason: "not a directory".into(),
+            error: None,
         });
     }
 
@@ -300,18 +300,18 @@ fn collect_files(
 ) -> Result<()> {
     let listing = std::fs::read_dir(dir).map_err(|e| Error::InvalidSource {
         path: dir.to_path_buf(),
-        reason: e.to_string(),
+        error: Some(e.to_string()),
     })?;
 
     for item in listing {
         let item = item.map_err(|e| Error::InvalidSource {
             path: dir.to_path_buf(),
-            reason: e.to_string(),
+            error: Some(e.to_string()),
         })?;
         let path = item.path();
         let file_type = item.file_type().map_err(|e| Error::InvalidSource {
             path: path.clone(),
-            reason: e.to_string(),
+            error: Some(e.to_string()),
         })?;
         let name = archive_name(root, &path);
 
@@ -337,7 +337,7 @@ fn collect_files(
                 .metadata()
                 .map_err(|e| Error::InvalidSource {
                     path: path.clone(),
-                    reason: e.to_string(),
+                    error: Some(e.to_string()),
                 })?
                 .len();
             files.push(SourceFile { path: name, size });

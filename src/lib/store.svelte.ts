@@ -27,7 +27,7 @@ import {
   type Rejection,
   type ScanReport,
 } from "./api";
-import { formatSize } from "./format";
+import { describeError, formatSize } from "./format";
 import { setLanguage, t, tn } from "./i18n.svelte";
 import { kindKey, kindOf } from "./kinds";
 import { applyTheme, loadSettings, saveSettings, type Settings } from "./settings";
@@ -215,7 +215,7 @@ class AppStore {
       this.archive = null;
       this.entries = [];
       this.skipped = [];
-      this.status = { tone: "warn", text: String(error) };
+      this.status = { tone: "warn", text: describeError(error) };
     }
   }
 
@@ -268,7 +268,7 @@ class AppStore {
       this.preview = null;
       this.selected.clear();
       this.skipped = [];
-      this.status = { tone: "warn", text: String(error) };
+      this.status = { tone: "warn", text: describeError(error) };
     }
   }
 
@@ -362,7 +362,7 @@ class AppStore {
     try {
       this.preview = await previewEntry(this.archive.handle, entry.path);
     } catch (error) {
-      this.status = { tone: "warn", text: String(error) };
+      this.status = { tone: "warn", text: describeError(error) };
     } finally {
       this.previewLoading = false;
     }
@@ -393,7 +393,7 @@ class AppStore {
           `${report.skipped.length > 0 ? `, ${tn("count.ignored", report.skipped.length)}` : ""}.`,
       };
     } catch (error) {
-      this.status = { tone: "warn", text: String(error) };
+      this.status = { tone: "warn", text: describeError(error) };
     } finally {
       this.busy = false;
       this.progress = null;
@@ -421,7 +421,7 @@ class AppStore {
       await warnAboutSkippedArchives(report.skipped);
     } catch (error) {
       this.source = null;
-      this.status = { tone: "warn", text: String(error) };
+      this.status = { tone: "warn", text: describeError(error) };
     }
   }
 
@@ -495,7 +495,7 @@ class AppStore {
 
       this.status = { tone: "info", text };
     } catch (error) {
-      this.status = { tone: "warn", text: String(error) };
+      this.status = { tone: "warn", text: describeError(error) };
     } finally {
       this.busy = false;
       this.progress = null;

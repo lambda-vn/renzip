@@ -16,7 +16,7 @@
   import Icon from "./Icon.svelte";
   import VirtualList from "./VirtualList.svelte";
   import { entryAssociation, openEntry, type Association } from "./api";
-  import { formatSize } from "./format";
+  import { describeError, formatSize } from "./format";
   import { t, tn } from "./i18n.svelte";
   import { glyphOf, typeLabel } from "./kinds";
   import { app } from "./store.svelte";
@@ -237,7 +237,7 @@
       await writeText(row.key);
       app.status = { tone: "info", text: t("status.copied", { name: row.key }) };
     } catch (error) {
-      app.status = { tone: "warn", text: String(error) };
+      app.status = { tone: "warn", text: describeError(error) };
     }
   }
 
@@ -265,7 +265,7 @@
         text: t(`status.${outcome.action}` as const, { path: outcome.path }),
       };
     } catch (error) {
-      app.status = { tone: "warn", text: String(error) };
+      app.status = { tone: "warn", text: describeError(error) };
     }
   }
 

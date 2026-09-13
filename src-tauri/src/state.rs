@@ -12,6 +12,8 @@ use std::sync::{Arc, Mutex};
 
 use renzip_core::{Archive, Entry};
 
+use crate::error::CommandError;
+
 /// One archive the window has open.
 pub struct Session {
     /// Path the archive was opened from.
@@ -82,13 +84,13 @@ impl AppState {
     ///
     /// # Errors
     ///
-    /// Returns a message for the window when the handle is unknown, which
+    /// [`CommandError::ArchiveNotOpen`] when the handle is unknown, which
     /// means the archive was closed while a command was in flight.
-    pub fn session(&self, handle: u32) -> Result<Arc<Session>, String> {
+    pub fn session(&self, handle: u32) -> Result<Arc<Session>, CommandError> {
         self.lock()
             .get(&handle)
             .cloned()
-            .ok_or_else(|| format!("archive {handle} is not open"))
+            .ok_or(CommandError::ArchiveNotOpen { handle })
     }
 
     /// Drop a session, cancelling anything still running on it and taking its

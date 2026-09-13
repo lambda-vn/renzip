@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::error::{Error, Result};
+use crate::error::{Error, Result, Truncation};
 use crate::header::{self, Header, Version, MAX_HEADER_LEN};
 use crate::index::{self, RawEntry};
 use crate::path as safe_path;
@@ -145,17 +145,19 @@ impl Archive {
             Version::Rpa1_0 => {
                 let index_path = path.with_extension("rpi");
                 if !index_path.is_file() {
-                    return Err(Error::MissingIndexFile(index_path));
+                    return Err(Error::MissingIndexFile { path: index_path });
                 }
                 let index_file = File::open(&index_path).map_err(|e| Error::io(&index_path, e))?;
                 index::decode(index_file, 0)?
             }
             _ => {
                 if header.index_offset >= file_size {
-                    return Err(Error::Truncated(format!(
-                        "the index is announced at offset {} of a {} byte file",
-                        header.index_offset, file_size
-                    )));
+                    return Err(Error::Truncated {
+                        truncation: Truncation::IndexPastEnd {
+                            offset: header.index_offset,
+                            size: file_size,
+                        },
+                    });
                 }
                 file.seek(SeekFrom::Start(header.index_offset))
                     .map_err(|e| Error::io(&path, e))?;
@@ -221,10 +223,9 @@ impl Archive {
     /// [`Error::EntryNotFound`] for an unknown path, [`Error::Truncated`] when
     /// the file ends inside the entry.
     pub fn read_entry(&mut self, path: &str) -> Result<Vec<u8>> {
-        let index = *self
-            .by_path
-            .get(path)
-            .ok_or_else(|| Error::EntryNotFound(path.to_string()))?;
+        let index = *self.by_path.get(path).ok_or_else(|| Error::EntryNotFound {
+            entry: path.to_string(),
+        })?;
         let entry = self.entries[index].clone();
 
         let mut buffer = Vec::with_capacity(entry.length as usize);
@@ -248,12 +249,13 @@ impl Archive {
         }
 
         if buffer.len() as u64 != entry.length {
-            return Err(Error::Truncated(format!(
-                "entry '{}' stops after {} of {} bytes",
-                entry.path,
-                buffer.len(),
-                entry.length
-            )));
+            return Err(Error::Truncated {
+                truncation: Truncation::EntryStopsEarly {
+                    read: buffer.len() as u64,
+                    length: entry.length,
+                    entry: entry.path,
+                },
+            });
         }
         Ok(buffer)
     }
@@ -337,10 +339,9 @@ impl Archive {
             Selection::Paths(paths) => {
                 let mut indices = Vec::with_capacity(paths.len());
                 for path in paths {
-                    let index = *self
-                        .by_path
-                        .get(path)
-                        .ok_or_else(|| Error::EntryNotFound(path.clone()))?;
+                    let index = *self.by_path.get(path).ok_or_else(|| Error::EntryNotFound {
+                        entry: path.clone(),
+                    })?;
                     indices.push(index);
                 }
                 indices.sort_unstable();
@@ -374,9 +375,9 @@ fn read_header(file: &mut File, path: &Path) -> Result<Header> {
             key: 0,
         });
     }
-    Err(Error::UnsupportedHeader(
-        String::from_utf8_lossy(&window[..read.min(32)]).to_string(),
-    ))
+    Err(Error::UnsupportedHeader {
+        header: String::from_utf8_lossy(&window[..read.min(32)]).to_string(),
+    })
 }
 
 /// Check every raw entry against the path rules and the archive bounds.
@@ -493,18 +494,18 @@ fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<Reason> {
 fn prepare_destination(dest_dir: &Path) -> Result<PathBuf> {
     std::fs::create_dir_all(dest_dir).map_err(|e| Error::InvalidDestination {
         path: dest_dir.to_path_buf(),
-        reason: e.to_string(),
+        error: Some(e.to_string()),
     })?;
     let root = dest_dir
         .canonicalize()
         .map_err(|e| Error::InvalidDestination {
             path: dest_dir.to_path_buf(),
-            reason: e.to_string(),
+            error: Some(e.to_string()),
         })?;
     if !root.is_dir() {
         return Err(Error::InvalidDestination {
             path: root,
-            reason: "not a directory".into(),
+            error: None,
         });
     }
     Ok(root)

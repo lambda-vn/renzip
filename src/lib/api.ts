@@ -51,6 +51,38 @@ export type Rejection = {
   reason: Reason;
 };
 
+/** What is wrong with an archive index, mirroring `IndexProblem`. */
+export type IndexProblem =
+  | { kind: "not_a_dict" }
+  | { kind: "inflate" | "unpickle" | "pickle" | "deflate"; error: string }
+  | { kind: "too_large"; limit: number }
+  | { kind: "key_not_a_string"; key: string }
+  | { kind: "not_a_list" | "no_tuple" | "not_a_tuple"; entry: string }
+  | { kind: "field_count"; entry: string; count: number }
+  | { kind: "prefix_not_bytes" | "not_a_positive_integer"; entry: string; value: string };
+
+/** Where an archive ends before what it announces, mirroring `Truncation`. */
+export type Truncation =
+  | { kind: "index_past_end"; offset: number; size: number }
+  | { kind: "entry_stops_early"; entry: string; read: number; length: number };
+
+/**
+ * Why a command failed, mirroring `CommandError` and the core `Error` it
+ * passes through: a code and its details, which the window words itself.
+ */
+export type CommandError =
+  | { code: "io"; path: string; error: string }
+  | { code: "unsupported_header"; header: string }
+  | { code: "missing_index_file"; path: string }
+  | { code: "corrupt_index"; problem: IndexProblem }
+  | { code: "truncated"; truncation: Truncation }
+  | { code: "entry_not_found"; entry: string }
+  | { code: "invalid_destination" | "invalid_source"; path: string; error: string | null }
+  | { code: "unsupported_write_version"; version: string }
+  | { code: "archive_not_open"; handle: number }
+  | { code: "entry_skipped"; entry: string; reason: Reason }
+  | { code: "reveal_failed" | "internal"; error: string };
+
 /** What is known about an archive right after it is opened. */
 export type ArchiveSummary = {
   handle: number;

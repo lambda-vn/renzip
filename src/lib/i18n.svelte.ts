@@ -360,6 +360,99 @@ const MESSAGES = {
     en: "component '{detail}' ends with a dot or a space",
   },
 
+  "error.io": { fr: "Accès impossible à {path} : {error}", en: "Cannot access {path}: {error}" },
+  "error.unsupported_header": {
+    fr: "Ce fichier n'est pas une archive reconnue (en-tête : « {header} »).",
+    en: "This file is not a recognized archive (header: '{header}').",
+  },
+  "error.missing_index_file": {
+    fr: "Archive RPA-1.0 sans son fichier d'index : {path} est introuvable.",
+    en: "RPA-1.0 archive without its index file: {path} is missing.",
+  },
+  "error.corrupt_index": {
+    fr: "L'index de l'archive est illisible : {problem}.",
+    en: "The archive index is unreadable: {problem}.",
+  },
+  "error.truncated.index_past_end": {
+    fr: "L'archive est tronquée : son index est annoncé à la position {offset} d'un fichier de {size} octets.",
+    en: "The archive is truncated: its index is announced at offset {offset} of a {size} byte file.",
+  },
+  "error.truncated.entry_stops_early": {
+    fr: "L'archive est tronquée : l'entrée « {entry} » s'arrête après {read} des {length} octets annoncés.",
+    en: "The archive is truncated: entry '{entry}' stops after {read} of {length} bytes.",
+  },
+  "error.entry_not_found": {
+    fr: "L'archive ne contient pas d'entrée « {entry} ».",
+    en: "The archive has no entry '{entry}'.",
+  },
+  "error.invalid_destination": {
+    fr: "Dossier de destination inutilisable, {path} : {error}",
+    en: "Unusable destination folder, {path}: {error}",
+  },
+  "error.invalid_destination.not_a_directory": {
+    fr: "La destination {path} n'est pas un dossier.",
+    en: "The destination {path} is not a folder.",
+  },
+  "error.invalid_source": {
+    fr: "Dossier source illisible, {path} : {error}",
+    en: "Unreadable source folder, {path}: {error}",
+  },
+  "error.invalid_source.not_a_directory": {
+    fr: "La source {path} n'est pas un dossier.",
+    en: "The source {path} is not a folder.",
+  },
+  "error.unsupported_write_version": {
+    fr: "Impossible d'écrire une archive en version {version}.",
+    en: "Cannot write archives in version {version}.",
+  },
+  "error.archive_not_open": {
+    fr: "Cette archive a été fermée entre-temps.",
+    en: "This archive was closed in the meantime.",
+  },
+  "error.entry_skipped": {
+    fr: "{entry} n'a pas pu être ouvert : {reason}.",
+    en: "{entry} could not be opened: {reason}.",
+  },
+  "error.reveal_failed": {
+    fr: "Impossible de montrer le fichier dans son dossier : {error}",
+    en: "Cannot show the file in its folder: {error}",
+  },
+  "error.internal": { fr: "Erreur interne : {error}", en: "Internal error: {error}" },
+  "index.inflate": { fr: "décompression impossible ({error})", en: "cannot inflate it ({error})" },
+  "index.too_large": {
+    fr: "il dépasse {limit} octets une fois décompressé",
+    en: "it inflates past {limit} bytes",
+  },
+  "index.unpickle": { fr: "décodage impossible ({error})", en: "cannot unpickle it ({error})" },
+  "index.not_a_dict": { fr: "ce n'est pas un dictionnaire", en: "it is not a dict" },
+  "index.key_not_a_string": {
+    fr: "une clé n'est pas une chaîne ({key})",
+    en: "a key is not a string ({key})",
+  },
+  "index.not_a_list": {
+    fr: "l'entrée « {entry} » n'est pas une liste de tuples",
+    en: "entry '{entry}' is not a list of tuples",
+  },
+  "index.no_tuple": { fr: "l'entrée « {entry} » ne décrit aucun bloc", en: "entry '{entry}' has no tuple" },
+  "index.field_count": {
+    fr: "l'entrée « {entry} » a {count} champs au lieu de 2 ou 3",
+    en: "entry '{entry}' has {count} fields, expected 2 or 3",
+  },
+  "index.not_a_tuple": {
+    fr: "l'entrée « {entry} » n'est pas décrite par un tuple",
+    en: "entry '{entry}' is not described by a tuple",
+  },
+  "index.prefix_not_bytes": {
+    fr: "le préfixe de l'entrée « {entry} » n'est pas une chaîne d'octets ({value})",
+    en: "entry '{entry}' has a prefix that is not a byte string ({value})",
+  },
+  "index.not_a_positive_integer": {
+    fr: "l'entrée « {entry} » a une position ou une taille qui n'est pas un entier positif ({value})",
+    en: "entry '{entry}' has an offset or length that is not a positive integer ({value})",
+  },
+  "index.pickle": { fr: "encodage impossible ({error})", en: "cannot pickle it ({error})" },
+  "index.deflate": { fr: "compression impossible ({error})", en: "cannot deflate it ({error})" },
+
   "count.entry.one": { fr: "{n} entrée", en: "{n} entry" },
   "count.entry.other": { fr: "{n} entrées", en: "{n} entries" },
   "count.file.one": { fr: "{n} fichier", en: "{n} file" },

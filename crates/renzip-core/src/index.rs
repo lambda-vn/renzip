@@ -22,7 +22,7 @@ use std::io::Read;
 use flate2::read::ZlibDecoder;
 use serde_pickle::{DeOptions, HashableValue, SerOptions, Value};
 
-use crate::error::{Error, Result};
+use crate::error::{Error, IndexProblem, Result};
 
 /// Largest index this crate will inflate, as a guard against a zlib bomb.
 ///
@@ -66,11 +66,15 @@ pub fn decode(compressed: impl Read, key: u64) -> Result<Vec<RawEntry>> {
     ZlibDecoder::new(compressed)
         .take(MAX_INDEX_BYTES + 1)
         .read_to_end(&mut raw)
-        .map_err(|e| Error::CorruptIndex(format!("cannot inflate the index: {e}")))?;
+        .map_err(|e| {
+            corrupt(IndexProblem::Inflate {
+                error: e.to_string(),
+            })
+        })?;
     if raw.len() as u64 > MAX_INDEX_BYTES {
-        return Err(Error::CorruptIndex(format!(
-            "index inflates past the {MAX_INDEX_BYTES} byte limit"
-        )));
+        return Err(corrupt(IndexProblem::TooLarge {
+            limit: MAX_INDEX_BYTES,
+        }));
     }
 
     // Globals are replaced by None instead of aborting the parse, because a
@@ -80,11 +84,14 @@ pub fn decode(compressed: impl Read, key: u64) -> Result<Vec<RawEntry>> {
     // option only ever turns an object into None, never into a call, and a
     // None still has to pass the shape checks below.
     let options = DeOptions::new().replace_unresolved_globals();
-    let value = serde_pickle::value_from_slice(&raw, options)
-        .map_err(|e| Error::CorruptIndex(format!("cannot unpickle the index: {e}")))?;
+    let value = serde_pickle::value_from_slice(&raw, options).map_err(|e| {
+        corrupt(IndexProblem::Unpickle {
+            error: e.to_string(),
+        })
+    })?;
 
     let Value::Dict(dict) = value else {
-        return Err(Error::CorruptIndex("index is not a dict".into()));
+        return Err(corrupt(IndexProblem::NotADict));
     };
 
     let mut entries = Vec::with_capacity(dict.len());
@@ -93,6 +100,11 @@ pub fn decode(compressed: impl Read, key: u64) -> Result<Vec<RawEntry>> {
         entries.push(decode_entry(path, tuples, key)?);
     }
     Ok(entries)
+}
+
+/// Turn what is wrong with an index into the crate's error.
+fn corrupt(problem: IndexProblem) -> Error {
+    Error::CorruptIndex { problem }
 }
 
 /// Turn an index key into a path string.
@@ -107,34 +119,32 @@ fn decode_name(name: HashableValue) -> Result<String> {
             Ok(s) => s,
             Err(e) => e.into_bytes().iter().map(|&c| c as char).collect(),
         }),
-        other => Err(Error::CorruptIndex(format!(
-            "index key is not a string: {other:?}"
-        ))),
+        other => Err(corrupt(IndexProblem::KeyNotAString {
+            key: format!("{other:?}"),
+        })),
     }
 }
 
 /// Decode the tuple list attached to one name.
 fn decode_entry(path: String, tuples: Value, key: u64) -> Result<RawEntry> {
     let Value::List(items) = tuples else {
-        return Err(Error::CorruptIndex(format!(
-            "entry '{path}' is not a list of tuples"
-        )));
+        return Err(corrupt(IndexProblem::NotAList { entry: path }));
     };
     if items.is_empty() {
         // Ren'Py itself indexes the empty list to read the first tuple and
         // raises IndexError; there is no partial read to fall back to, so
         // this is fatal the same way a stream that does not unpickle at all
         // is, rather than something to route around one entry at a time.
-        return Err(Error::CorruptIndex(format!("entry '{path}' has no tuple")));
+        return Err(corrupt(IndexProblem::NoTuple { entry: path }));
     }
 
     if items.len() == 1 {
         let fields = as_tuple_fields(&path, items.into_iter().next().unwrap())?;
         if fields.len() != 2 && fields.len() != 3 {
-            return Err(Error::CorruptIndex(format!(
-                "entry '{path}' has {} fields, expected 2 or 3",
-                fields.len()
-            )));
+            return Err(corrupt(IndexProblem::FieldCount {
+                count: fields.len(),
+                entry: path,
+            }));
         }
         let offset = decode_int(&fields[0], &path)? ^ key;
         let length = decode_int(&fields[1], &path)? ^ key;
@@ -176,9 +186,9 @@ fn decode_entry(path: String, tuples: Value, key: u64) -> Result<RawEntry> {
 /// tuple is corrupt data, not an unusual but readable shape.
 fn as_tuple_fields(path: &str, value: Value) -> Result<Vec<Value>> {
     let Value::Tuple(fields) = value else {
-        return Err(Error::CorruptIndex(format!(
-            "entry '{path}' is not described by a tuple"
-        )));
+        return Err(corrupt(IndexProblem::NotATuple {
+            entry: path.to_string(),
+        }));
     };
     Ok(fields)
 }
@@ -196,9 +206,10 @@ fn decode_prefix(path: &str, field: Option<&Value>) -> Result<Vec<u8>> {
         // pickled from a unicode object arrives as a String; Ren'Py writes it
         // back out as latin-1, so that is how it is turned into bytes here.
         Some(Value::String(s)) => Ok(s.chars().map(|c| c as u8).collect()),
-        Some(other) => Err(Error::CorruptIndex(format!(
-            "entry '{path}' has a prefix that is not a byte string: {other:?}"
-        ))),
+        Some(other) => Err(corrupt(IndexProblem::PrefixNotBytes {
+            entry: path.to_string(),
+            value: format!("{other:?}"),
+        })),
     }
 }
 
@@ -206,9 +217,10 @@ fn decode_prefix(path: &str, field: Option<&Value>) -> Result<Vec<u8>> {
 fn decode_int(value: &Value, path: &str) -> Result<u64> {
     match value {
         Value::I64(n) if *n >= 0 => Ok(*n as u64),
-        other => Err(Error::CorruptIndex(format!(
-            "entry '{path}' has an offset or length that is not a positive integer: {other:?}"
-        ))),
+        other => Err(corrupt(IndexProblem::NotAPositiveInteger {
+            entry: path.to_string(),
+            value: format!("{other:?}"),
+        })),
     }
 }
 
@@ -243,12 +255,20 @@ pub fn encode(entries: &[RawEntry], key: u64) -> Result<Vec<u8>> {
         &Value::Dict(dict),
         SerOptions::new().proto_v2(),
     )
-    .map_err(|e| Error::CorruptIndex(format!("cannot pickle the index: {e}")))?;
+    .map_err(|e| {
+        corrupt(IndexProblem::Pickle {
+            error: e.to_string(),
+        })
+    })?;
 
     let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
     std::io::Write::write_all(&mut encoder, &pickled)
         .and_then(|()| encoder.finish())
-        .map_err(|e| Error::CorruptIndex(format!("cannot deflate the index: {e}")))
+        .map_err(|e| {
+            corrupt(IndexProblem::Deflate {
+                error: e.to_string(),
+            })
+        })
 }
 
 #[cfg(test)]
@@ -345,6 +365,11 @@ mod tests {
     #[test]
     fn refuses_a_stream_that_is_not_an_index() {
         assert!(decode(&b"not zlib at all"[..], 0).is_err());
-        assert!(decode(&compress_pickle(&Value::List(vec![]))[..], 0).is_err());
+        assert!(matches!(
+            decode(&compress_pickle(&Value::List(vec![]))[..], 0),
+            Err(Error::CorruptIndex {
+                problem: IndexProblem::NotADict
+            })
+        ));
     }
 }

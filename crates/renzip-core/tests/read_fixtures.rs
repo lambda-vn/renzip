@@ -186,7 +186,7 @@ fn an_entry_reaching_past_the_end_is_reported_not_read() {
 fn a_truncated_archive_fails_to_open() {
     let error = Archive::open(fixtures().join("truncated-3.0.rpa")).unwrap_err();
     assert!(
-        matches!(error, renzip_core::Error::Truncated(_)),
+        matches!(error, renzip_core::Error::Truncated { .. }),
         "unexpected error: {error}"
     );
 }
@@ -199,7 +199,7 @@ fn a_file_that_is_not_an_archive_fails_to_open() {
 
     let error = Archive::open(&path).unwrap_err();
     assert!(
-        matches!(error, renzip_core::Error::UnsupportedHeader(_)),
+        matches!(error, renzip_core::Error::UnsupportedHeader { .. }),
         "unexpected error: {error}"
     );
 }
@@ -230,7 +230,7 @@ fn a_selection_extracts_only_what_it_names() {
     );
     assert!(matches!(
         unknown.unwrap_err(),
-        renzip_core::Error::EntryNotFound(_)
+        renzip_core::Error::EntryNotFound { .. }
     ));
 }
 

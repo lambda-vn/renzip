@@ -40,6 +40,6 @@ pub mod reason;
 
 pub use archive::{Archive, Entry, ExtractionReport, Layout, Progress, Rejection, Selection};
 pub use builder::{build, scan, BuildReport, ScanReport, SourceFile, DEFAULT_KEY};
-pub use error::{Error, Result};
+pub use error::{Error, IndexProblem, Result, Truncation};
 pub use header::Version;
 pub use reason::{IoAction, Reason};

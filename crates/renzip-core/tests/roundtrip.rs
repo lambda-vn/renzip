@@ -319,7 +319,7 @@ fn versions_this_crate_cannot_write_are_refused_before_any_file_is_touched() {
 
         assert!(matches!(
             error,
-            renzip_core::Error::UnsupportedWriteVersion(_)
+            renzip_core::Error::UnsupportedWriteVersion { .. }
         ));
         assert!(!archive_path.exists(), "no partial archive is left behind");
     }

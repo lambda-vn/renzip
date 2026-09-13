@@ -5,6 +5,7 @@
 //! types into something the frontend can read.
 
 mod desktop;
+mod error;
 mod preview;
 mod state;
 
@@ -18,6 +19,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use renzip_core::{Archive, Layout, Progress, Rejection, Selection, Version};
 
+use crate::error::CommandError;
 use crate::preview::Preview;
 use crate::state::{AppState, Session};
 
@@ -110,15 +112,18 @@ struct ProgressEvent {
 
 /// Open an archive and register it under a fresh handle.
 #[tauri::command]
-async fn open_archive(state: State<'_, AppState>, path: String) -> Result<ArchiveSummary, String> {
+async fn open_archive(
+    state: State<'_, AppState>,
+    path: String,
+) -> Result<ArchiveSummary, CommandError> {
     let path = PathBuf::from(path);
     let archive = tauri::async_runtime::spawn_blocking({
         let path = path.clone();
         move || Archive::open(path)
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    .map_err(CommandError::from)?
+    .map_err(CommandError::from)?;
 
     // Everything the window is told is read before the archive moves into the
     // session that owns it from here on.
@@ -139,7 +144,7 @@ async fn open_archive(state: State<'_, AppState>, path: String) -> Result<Archiv
 
 /// List every usable entry of an open archive.
 #[tauri::command]
-fn list_entries(state: State<'_, AppState>, handle: u32) -> Result<Vec<EntryRow>, String> {
+fn list_entries(state: State<'_, AppState>, handle: u32) -> Result<Vec<EntryRow>, CommandError> {
     let session = state.session(handle)?;
     Ok(session
         .entries
@@ -155,12 +160,12 @@ fn list_entries(state: State<'_, AppState>, handle: u32) -> Result<Vec<EntryRow>
 
 /// List what packing a directory would put into an archive.
 #[tauri::command]
-async fn scan_directory(source_dir: String) -> Result<renzip_core::ScanReport, String> {
+async fn scan_directory(source_dir: String) -> Result<renzip_core::ScanReport, CommandError> {
     tauri::async_runtime::spawn_blocking(move || {
-        renzip_core::scan(Path::new(&source_dir)).map_err(|e| e.to_string())
+        renzip_core::scan(Path::new(&source_dir)).map_err(CommandError::from)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(CommandError::from)?
 }
 
 /// Say what the desktop would do with a file carrying this extension.
@@ -191,14 +196,16 @@ async fn preview_entry(
     state: State<'_, AppState>,
     handle: u32,
     path: String,
-) -> Result<Preview, String> {
+) -> Result<Preview, CommandError> {
     let session = state.session(handle)?;
     let size = session
         .entries
         .iter()
         .find(|entry| entry.path == path)
         .map(|entry| entry.length)
-        .ok_or_else(|| format!("no such entry in archive: {path}"))?;
+        .ok_or_else(|| renzip_core::Error::EntryNotFound {
+            entry: path.clone(),
+        })?;
 
     if let Some(refusal) = preview::too_big(&path, size) {
         return Ok(refusal);
@@ -206,12 +213,12 @@ async fn preview_entry(
 
     let archive_path = session.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let mut archive = Archive::open(&archive_path).map_err(|e| e.to_string())?;
-        let bytes = archive.read_entry(&path).map_err(|e| e.to_string())?;
+        let mut archive = Archive::open(&archive_path).map_err(CommandError::from)?;
+        let bytes = archive.read_entry(&path).map_err(CommandError::from)?;
         Ok(preview::of(&path, bytes))
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(CommandError::from)?
 }
 
 /// Extract one entry to a temporary directory and hand it to the desktop.
@@ -236,7 +243,7 @@ async fn open_entry(
     handle: u32,
     path: String,
     chooser: bool,
-) -> Result<OpenOutcome, String> {
+) -> Result<OpenOutcome, CommandError> {
     let session = state.session(handle)?;
     let archive_path = session.path.clone();
     let dest = session.scratch.clone();
@@ -251,7 +258,7 @@ async fn open_entry(
         // and reopening the same entry reuses the same file instead of
         // piling up copies.
         let entry_dir = dest.join(scratch_subdir(&path));
-        let mut archive = Archive::open(&archive_path).map_err(|e| e.to_string())?;
+        let mut archive = Archive::open(&archive_path).map_err(CommandError::from)?;
         let report = archive
             .extract(
                 Selection::Paths(std::slice::from_ref(&path)),
@@ -259,9 +266,12 @@ async fn open_entry(
                 Layout::Flat,
                 &mut |_| true,
             )
-            .map_err(|e| e.to_string())?;
+            .map_err(CommandError::from)?;
         if let Some(skipped) = report.skipped.first() {
-            return Err(format!("{}: {}", skipped.path, skipped.reason));
+            return Err(CommandError::EntrySkipped {
+                entry: skipped.path.clone(),
+                reason: skipped.reason.clone(),
+            });
         }
 
         let name = path.rsplit('/').next().unwrap_or(&path);
@@ -298,14 +308,14 @@ async fn open_entry(
         }
         app.opener()
             .reveal_item_in_dir(&written)
-            .map_err(|e| e.to_string())?;
+            .map_err(CommandError::from)?;
         Ok(OpenOutcome {
             path: location,
             action: OpenAction::Revealed,
         })
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(CommandError::from)?
 }
 
 /// Extract the whole archive, or the given selection, into `dest_dir`.
@@ -317,14 +327,14 @@ async fn extract(
     paths: Option<Vec<String>>,
     dest_dir: String,
     layout: Layout,
-) -> Result<renzip_core::ExtractionReport, String> {
+) -> Result<renzip_core::ExtractionReport, CommandError> {
     let session = state.session(handle)?;
     let archive_path = session.path.clone();
     let cancel = session.cancel.clone();
     cancel.store(false, Ordering::Relaxed);
 
     tauri::async_runtime::spawn_blocking(move || {
-        let mut archive = Archive::open(&archive_path).map_err(|e| e.to_string())?;
+        let mut archive = Archive::open(&archive_path).map_err(CommandError::from)?;
         let mut emitter = ProgressEmitter::new(app, "extract", handle);
         let selection = match &paths {
             Some(paths) => Selection::Paths(paths),
@@ -335,15 +345,15 @@ async fn extract(
                 emitter.emit(progress);
                 !cancel.load(Ordering::Relaxed)
             })
-            .map_err(|e| e.to_string())
+            .map_err(CommandError::from)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(CommandError::from)?
 }
 
 /// Ask the extraction running on this handle to stop.
 #[tauri::command]
-fn cancel_extraction(state: State<'_, AppState>, handle: u32) -> Result<(), String> {
+fn cancel_extraction(state: State<'_, AppState>, handle: u32) -> Result<(), CommandError> {
     state.session(handle)?.cancel.store(true, Ordering::Relaxed);
     Ok(())
 }
@@ -357,11 +367,15 @@ async fn build_archive(
     dest_path: String,
     version: String,
     excludes: Vec<String>,
-) -> Result<renzip_core::BuildReport, String> {
+) -> Result<renzip_core::BuildReport, CommandError> {
     let version = match version.as_str() {
         "RPA-2.0" => Version::Rpa2_0,
         "RPA-3.0" => Version::Rpa3_0,
-        other => return Err(format!("cannot write archives in version {other}")),
+        other => {
+            return Err(CommandError::UnsupportedWriteVersion {
+                version: other.to_string(),
+            })
+        }
     };
     let cancel = state.build_cancel.clone();
     cancel.store(false, Ordering::Relaxed);
@@ -379,10 +393,10 @@ async fn build_archive(
                 !cancel.load(Ordering::Relaxed)
             },
         )
-        .map_err(|e| e.to_string())
+        .map_err(CommandError::from)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(CommandError::from)?
 }
 
 /// Ask the running build to stop.
