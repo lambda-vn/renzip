@@ -245,8 +245,12 @@ const MESSAGES = {
   "status.warnLabel": { fr: "Attention", en: "Warning" },
   "status.refreshed": { fr: "Archive actualisée.", en: "Archive refreshed." },
   "status.built": {
-    fr: "Archive écrite dans {path} : {count} ({size}) en {version}{cancelled}.",
-    en: "Archive written to {path}: {count} ({size}) in {version}{cancelled}.",
+    fr: "Archive écrite dans {path} : {count} ({size}) en {version}.",
+    en: "Archive written to {path}: {count} ({size}) in {version}.",
+  },
+  "status.buildCancelled": {
+    fr: "Création annulée : rien n'a été écrit dans {path}. Si une archive existait déjà à cet emplacement, elle est intacte.",
+    en: "Build cancelled: nothing was written to {path}. If an archive already existed there, it is untouched.",
   },
   "status.verified": { fr: " Relecture conforme.", en: " Verified." },
   "status.verifyFailed": {

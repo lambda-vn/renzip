@@ -451,15 +451,23 @@ class AppStore {
         [...this.excluded],
       );
       this.skipped = report.skipped;
+
+      if (report.cancelled) {
+        this.status = {
+          tone: "warn",
+          text: t("status.buildCancelled", { path: this.destPath }),
+        };
+        return;
+      }
+
       let text = t("status.built", {
         path: this.destPath,
         count: tn("count.packed", report.entries),
         size: formatSize(report.bytes),
         version: this.version,
-        cancelled: report.cancelled ? t("status.cancelled") : "",
       });
 
-      if (!report.cancelled && this.settings.verifyAfterBuild) {
+      if (this.settings.verifyAfterBuild) {
         // Verification is a real read of what was just written: the archive is
         // reopened, its index decoded, and what it announces compared to what
         // was packed. Opening it also puts it in front of the user, which is
@@ -483,7 +491,7 @@ class AppStore {
         return;
       }
 
-      this.status = { tone: report.cancelled ? "warn" : "info", text };
+      this.status = { tone: "info", text };
     } catch (error) {
       this.status = { tone: "warn", text: String(error) };
     } finally {

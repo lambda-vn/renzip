@@ -91,19 +91,21 @@ pub fn scan(source_dir: &Path) -> Result<ScanReport> {
 /// creation screen lets a user drop something they staged by mistake, at
 /// any depth, before committing to a build.
 ///
-/// `dest_path` itself is left out of its own build even when it falls inside
-/// `source_dir`: recreating an archive in place must not fold the archive
-/// being replaced into the one being written.
+/// The archive is written to a temporary file next to `dest_path` and only
+/// moved into place once it is complete, so a build that fails partway, or
+/// that finds `dest_path` inside `source_dir` and would otherwise read the
+/// file it is writing, never touches whatever was at `dest_path` before.
 ///
 /// `on_progress` is called once per stored file and stops the build when it
-/// returns `false`; a cancelled build leaves a partial file behind, which the
-/// caller is expected to delete.
+/// returns `false`; a cancelled build discards its temporary file and leaves
+/// `dest_path` exactly as it was (untouched if nothing was there yet).
 ///
 /// # Errors
 ///
 /// Fails when the source directory cannot be walked, the destination cannot
 /// be written, or `version` is one this crate cannot write (only RPA-2.0 and
-/// RPA-3.0 can be written).
+/// RPA-3.0 can be written). On any error after the temporary file was
+/// created, it is removed and `dest_path` is left exactly as it was.
 pub fn build(
     source_dir: &Path,
     dest_path: &Path,
@@ -117,10 +119,13 @@ pub fn build(
     let placeholder = header::format_line(version, 0, key)?;
     let key = if version == Version::Rpa2_0 { 0 } else { key };
 
-    // The destination may not exist yet, so only its parent needs to
-    // canonicalize; that is enough to compare it against the canonical paths
-    // the scan below produces.
-    let reserved_dest = canonical_prospective(dest_path);
+    let temp_path = temp_path_for(dest_path);
+    // Neither the destination this build would replace nor the temporary
+    // file it writes through belong inside the archive being built.
+    let reserved = [&temp_path, dest_path]
+        .into_iter()
+        .filter_map(canonical_prospective)
+        .collect::<Vec<_>>();
 
     let scanned = scan(source_dir)?;
     let canonical_source = source_dir
@@ -133,7 +138,7 @@ pub fn build(
             continue;
         }
         let native = file.path.replace('/', std::path::MAIN_SEPARATOR_STR);
-        if reserved_dest.as_deref() == Some(canonical_source.join(native).as_path()) {
+        if reserved.contains(&canonical_source.join(native)) {
             report.skipped.push(Rejection {
                 path: file.path,
                 reason: "left out: this is the destination of this build".into(),
@@ -144,14 +149,59 @@ pub fn build(
     }
     report.skipped.extend(scanned.skipped);
 
+    let outcome = write_temp_archive(
+        &temp_path,
+        source_dir,
+        files,
+        version,
+        key,
+        &placeholder,
+        report,
+        on_progress,
+    );
+
+    let report = match outcome {
+        Ok(report) => report,
+        Err(e) => {
+            let _ = std::fs::remove_file(&temp_path);
+            return Err(e);
+        }
+    };
+
+    if report.cancelled {
+        let _ = std::fs::remove_file(&temp_path);
+    } else {
+        std::fs::rename(&temp_path, dest_path).map_err(|e| {
+            let _ = std::fs::remove_file(&temp_path);
+            Error::io(dest_path, e)
+        })?;
+    }
+
+    Ok(report)
+}
+
+/// Write every file into `temp_path`, starting from `placeholder` as the
+/// header. Does not touch `dest_path`: [`build`] moves the temporary file
+/// into place once this returns `Ok` with `cancelled` false.
+#[allow(clippy::too_many_arguments)]
+fn write_temp_archive(
+    temp_path: &Path,
+    source_dir: &Path,
+    files: Vec<SourceFile>,
+    version: Version,
+    key: u64,
+    placeholder: &str,
+    mut report: BuildReport,
+    on_progress: &mut dyn FnMut(&Progress<'_>) -> bool,
+) -> Result<BuildReport> {
     let mut out = OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(dest_path)
-        .map_err(|e| Error::io(dest_path, e))?;
+        .open(temp_path)
+        .map_err(|e| Error::io(temp_path, e))?;
     out.write_all(placeholder.as_bytes())
-        .map_err(|e| Error::io(dest_path, e))?;
+        .map_err(|e| Error::io(temp_path, e))?;
 
     let total = files.len();
     let bytes_total: u64 = files.iter().map(|file| file.size).sum();
@@ -190,32 +240,45 @@ pub fn build(
             current: &name,
         });
         if !keep_going {
+            // Nothing here will be moved into place: report that no file was
+            // actually stored, rather than counting work about to be thrown
+            // away.
             report.cancelled = true;
-            break;
+            report.entries = 0;
+            report.bytes = 0;
+            return Ok(report);
         }
     }
 
     let index_offset = offset;
     let encoded = index::encode(&entries, key)?;
     out.write_all(&encoded)
-        .map_err(|e| Error::io(dest_path, e))?;
+        .map_err(|e| Error::io(temp_path, e))?;
 
     let final_header = header::format_line(version, index_offset, key)?;
     debug_assert_eq!(final_header.len(), placeholder.len());
     out.seek(SeekFrom::Start(0))
-        .map_err(|e| Error::io(dest_path, e))?;
+        .map_err(|e| Error::io(temp_path, e))?;
     out.write_all(final_header.as_bytes())
-        .map_err(|e| Error::io(dest_path, e))?;
-    out.flush().map_err(|e| Error::io(dest_path, e))?;
+        .map_err(|e| Error::io(temp_path, e))?;
+    out.flush().map_err(|e| Error::io(temp_path, e))?;
 
     Ok(report)
 }
 
+/// Name of the temporary file `build` writes through before moving it to
+/// `dest_path`: a sibling file, so the final move is a same-volume rename.
+fn temp_path_for(dest_path: &Path) -> PathBuf {
+    let mut name = dest_path.file_name().unwrap_or_default().to_os_string();
+    name.push(".tmp");
+    dest_path.with_file_name(name)
+}
+
 /// Canonical path `path` resolves to, even when `path` itself does not exist
 /// yet: only its parent directory needs to, which lets a not-yet-created
-/// destination still be compared against the canonical paths a directory
-/// scan produces. `None` when the parent cannot be resolved, in which case
-/// nothing is excluded on `path`'s account.
+/// destination or temporary file still be compared against the canonical
+/// paths a directory scan produces. `None` when the parent cannot be
+/// resolved, in which case nothing is excluded on `path`'s account.
 fn canonical_prospective(path: &Path) -> Option<PathBuf> {
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty())?;
     let canonical_parent = parent.canonicalize().ok()?;

@@ -291,6 +291,48 @@ fn versions_this_crate_cannot_write_are_refused_before_any_file_is_touched() {
 }
 
 #[test]
+fn cancelling_a_build_discards_its_temporary_file_and_leaves_the_destination_untouched() {
+    let work = tempfile::tempdir().unwrap();
+    let source = work.path().join("source");
+    write_sources(&source);
+    let archive_path = work.path().join("built.rpa");
+
+    // An archive already sits at the destination before the cancelled build
+    // starts: cancelling must leave these exact bytes in place.
+    renzip_core::build(
+        &source,
+        &archive_path,
+        Version::Rpa3_0,
+        renzip_core::DEFAULT_KEY,
+        &[],
+        &mut |_| true,
+    )
+    .unwrap();
+    let before = std::fs::read(&archive_path).unwrap();
+
+    let report = renzip_core::build(
+        &source,
+        &archive_path,
+        Version::Rpa3_0,
+        renzip_core::DEFAULT_KEY,
+        &[],
+        &mut |_| false,
+    )
+    .unwrap();
+
+    assert!(report.cancelled);
+    assert_eq!(report.entries, 0, "nothing was actually stored: {report:?}");
+    assert_eq!(report.bytes, 0, "{report:?}");
+
+    let after = std::fs::read(&archive_path).unwrap();
+    assert_eq!(before, after, "the existing archive must be untouched");
+    assert!(
+        !archive_path.with_file_name("built.rpa.tmp").exists(),
+        "no temporary file left behind"
+    );
+}
+
+#[test]
 fn rebuilding_over_the_destination_excludes_it_from_its_own_build() {
     let work = tempfile::tempdir().unwrap();
     let source = work.path().join("source");
@@ -358,5 +400,41 @@ fn rebuilding_over_the_destination_excludes_it_from_its_own_build() {
     assert!(
         archive.entries().iter().all(|e| e.path != "archive.rpa"),
         "the archive must not contain itself"
+    );
+}
+
+#[test]
+fn a_failed_build_leaves_no_temporary_file_and_the_old_archive_untouched() {
+    let work = tempfile::tempdir().unwrap();
+    let source = work.path().join("source");
+    write_sources(&source);
+
+    // `dest` names an existing directory: every byte of the new archive can
+    // be written to the temporary file, but the final move into place cannot
+    // succeed, simulating a write failure once the archive is otherwise done.
+    let dest = work.path().join("dest.rpa");
+    std::fs::create_dir(&dest).unwrap();
+
+    let error = renzip_core::build(
+        &source,
+        &dest,
+        Version::Rpa3_0,
+        renzip_core::DEFAULT_KEY,
+        &[],
+        &mut |_| true,
+    )
+    .unwrap_err();
+
+    assert!(matches!(error, renzip_core::Error::Io { .. }), "{error:?}");
+    assert!(dest.is_dir(), "the untouched destination is still there");
+
+    let leftovers: Vec<_> = std::fs::read_dir(work.path())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name())
+        .collect();
+    assert_eq!(
+        leftovers.len(),
+        2,
+        "only source/ and dest.rpa/ should remain, no temporary file: {leftovers:?}"
     );
 }
