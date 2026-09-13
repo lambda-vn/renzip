@@ -19,6 +19,8 @@ import pickle
 import zlib
 from pathlib import Path
 
+from make_python2_fixture import MEMBERS as PYTHON2_MEMBERS
+
 FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 
 DEFAULT_KEY = 0xDEADBEEF
@@ -201,6 +203,14 @@ def main() -> None:
     }
     contents = write_official_style_archive(FIXTURES / "official-3.0.rpa", "RPA-3.0", official)
     expected["official-3.0.rpa"] = {"version": "RPA-3.0", "entries": encode(contents)}
+
+    # Written by Ren'Py 6.18's own archiver under its Python 2, not here: see
+    # make_python2_fixture.py, which needs that SDK. Only the expectation is
+    # written by this script; the committed archive is left as it is.
+    expected["renpy6-3.0.rpa"] = {
+        "version": "RPA-3.0",
+        "entries": encode(dict(PYTHON2_MEMBERS)),
+    }
 
     # Prefixed members: the first bytes of the content live in the index and
     # not in the data area, which is where an off-by-one on length shows up.
