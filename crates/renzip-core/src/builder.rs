@@ -217,10 +217,8 @@ fn write_temp_archive(
             Ok(written) => {
                 entries.push(RawEntry {
                     path: name.clone(),
-                    offset,
-                    length: written,
+                    segments: vec![(offset, written)],
                     prefix: Vec::new(),
-                    segment_count: 1,
                 });
                 offset += written;
                 report.entries += 1;

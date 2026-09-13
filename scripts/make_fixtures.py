@@ -130,24 +130,42 @@ def write_official_style_archive(path, version, members):
     return contents
 
 
+V1_PADDING = b"\xaa" * 7
+
+
 def write_v1_archive(path, members):
     """Write an RPA-1.0 archive: raw data, index in a sibling .rpi file.
 
+    Ren'Py 4.8.7's own archiver.py splits every file into several 1-10240
+    byte blocks separated by 1-32 bytes of random padding, one (offset,
+    length) tuple per block; the padding sizes are fixed here rather than
+    randomized so the fixture stays reproducible byte for byte.
+
     Args:
         path: Destination .rpa file.
-        members: Mapping of member name to content.
+        members: Mapping of member name to content: either raw bytes,
+            written as a single block, or a list of byte chunks, each
+            written as its own block with padding before it (but the first).
 
     Returns:
-        Mapping of member name to its content.
+        Mapping of member name to its full (concatenated) content.
     """
     body = bytearray()
     index = {}
+    contents = {}
     for name, content in members.items():
-        index[name] = [(len(body), len(content))]
-        body += content
+        blocks = content if isinstance(content, list) else [content]
+        tuples = []
+        for i, block in enumerate(blocks):
+            if i > 0:
+                body += V1_PADDING
+            tuples.append((len(body), len(block)))
+            body += block
+        index[name] = tuples
+        contents[name] = b"".join(blocks)
     path.write_bytes(bytes(body))
     path.with_suffix(".rpi").write_bytes(zlib.compress(pickle.dumps(index, protocol=2)))
-    return dict(members)
+    return contents
 
 
 def main() -> None:
@@ -226,22 +244,50 @@ def main() -> None:
         "rejected": ["runs-past-the-end.txt"],
     }
 
-    # Two tuples for one name: Ren'Py reads the first, and renzip says so.
+    # Two 2-field tuples for one name: Ren'Py concatenates them, so does renzip.
     head = header_line("RPA-2.0", 0, 0)
     body = b"firstsecond"
-    index = {"twice.txt": [(len(head), 5, b""), (len(head) + 5, 6, b"")]}
+    index = {"twice.txt": [(len(head), 5), (len(head) + 5, 6)]}
     payload = zlib.compress(pickle.dumps(index, protocol=2))
     (FIXTURES / "multi-segment-2.0.rpa").write_bytes(
         header_line("RPA-2.0", len(head) + len(body), 0) + body + payload
     )
     expected["multi-segment-2.0.rpa"] = {
         "version": "RPA-2.0",
-        "entries": encode({"twice.txt": b"first"}),
-        "multi_segment": ["twice.txt"],
+        "entries": encode({"twice.txt": b"firstsecond"}),
+    }
+
+    # Two 3-field tuples for one name: Ren'Py's loader unpacks each tuple of a
+    # multi-tuple entry as (offset, length) and raises ValueError on the third
+    # field, so this entry cannot be read either way and is reported rejected.
+    head = header_line("RPA-2.0", 0, 0)
+    body = b"firstsecond"
+    index = {
+        "unreadable.txt": [(len(head), 5, b""), (len(head) + 5, 6, b"")],
+        "fine.txt": [(len(head) + 11, 4)],
+    }
+    body += b"fine"
+    payload = zlib.compress(pickle.dumps(index, protocol=2))
+    (FIXTURES / "rejected-segments-2.0.rpa").write_bytes(
+        header_line("RPA-2.0", len(head) + len(body), 0) + body + payload
+    )
+    expected["rejected-segments-2.0.rpa"] = {
+        "version": "RPA-2.0",
+        "entries": encode({"fine.txt": b"fine"}),
+        "rejected": ["unreadable.txt"],
     }
 
     contents = write_v1_archive(
-        FIXTURES / "legacy-1.0.rpa", {"old.rpy": b"label old:\n    return\n", "data.bin": BINARY_BLOB}
+        FIXTURES / "legacy-1.0.rpa",
+        {
+            "old.rpy": b"label old:\n    return\n",
+            # Split into several blocks with padding between them, the way
+            # Ren'Py 4.8.7's own archiver.py splits every file into blocks
+            # separated by random padding (fixed-size here to stay
+            # reproducible): this is what proves segments are concatenated
+            # rather than only the first one read.
+            "data.bin": [BINARY_BLOB[:100], BINARY_BLOB[100:200], BINARY_BLOB[200:]],
+        },
     )
     expected["legacy-1.0.rpa"] = {"version": "RPA-1.0", "entries": encode(contents)}
 

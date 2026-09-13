@@ -50,11 +50,8 @@
   },
   "multi-segment-2.0.rpa": {
     "entries": {
-      "twice.txt": "6669727374"
+      "twice.txt": "66697273747365636f6e64"
     },
-    "multi_segment": [
-      "twice.txt"
-    ],
     "version": "RPA-2.0"
   },
   "official-3.0.rpa": {
@@ -80,5 +77,14 @@
       "whole-prefix.txt": "616c6c206f66206d65"
     },
     "version": "RPA-3.0"
+  },
+  "rejected-segments-2.0.rpa": {
+    "entries": {
+      "fine.txt": "66696e65"
+    },
+    "rejected": [
+      "unreadable.txt"
+    ],
+    "version": "RPA-2.0"
   }
 }

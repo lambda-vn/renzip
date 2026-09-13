@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Read an .rpa archive the way Ren'Py does, and print what it holds.
+"""Read an .rpa archive close to the way Ren'Py does, and print what it holds.
 
 Used to check the other direction of the loop test: that an archive written
 by renzip is read back correctly by an implementation that is not renzip.
-The logic mirrors renpy/loader.py, pickle module included, which is exactly
-why this script must only ever be pointed at archives you produced yourself.
+This is not a full port of renpy/loader.py - it combines a header's subkeys
+by XOR and reads only the first tuple of a single-tuple entry, both of which
+match the engine, but it does not reproduce every other thing the loader
+does. Pickle module included, which is exactly why this script must only
+ever be pointed at archives you produced yourself.
 
     python scripts/read_archive.py path/to/archive.rpa
 
@@ -68,12 +71,22 @@ def main(argv):
         version, index = read_index(handle, path)
         entries = {}
         for name, tuples in sorted(index.items()):
-            offset, length = tuples[0][0], tuples[0][1]
-            prefix = tuples[0][2] if len(tuples[0]) > 2 else b""
-            if isinstance(prefix, str):
-                prefix = prefix.encode("latin1")
-            handle.seek(offset)
-            entries[name] = (prefix + handle.read(length - len(prefix))).hex()
+            if len(tuples) == 1:
+                offset, length = tuples[0][0], tuples[0][1]
+                prefix = tuples[0][2] if len(tuples[0]) > 2 else b""
+                if isinstance(prefix, str):
+                    prefix = prefix.encode("latin1")
+                handle.seek(offset)
+                entries[name] = (prefix + handle.read(length - len(prefix))).hex()
+            else:
+                # Ren'Py concatenates every (offset, length) pair of a
+                # multi-tuple entry; unpacking one with a third field the
+                # same way raises ValueError there, which this does too.
+                data = b""
+                for offset, length in tuples:
+                    handle.seek(offset)
+                    data += handle.read(length)
+                entries[name] = data.hex()
 
     json.dump({"version": version, "entries": entries}, sys.stdout, sort_keys=True)
 

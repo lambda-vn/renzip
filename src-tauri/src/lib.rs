@@ -50,8 +50,6 @@ pub struct ArchiveSummary {
     file_size: u64,
     /// Entries refused at open time, with the reason for each.
     rejected: Vec<Rejection>,
-    /// Entries whose index held more than one tuple.
-    multi_segment: Vec<String>,
 }
 
 /// One row of the entry list.
@@ -133,7 +131,6 @@ async fn open_archive(state: State<'_, AppState>, path: String) -> Result<Archiv
         total_size: archive.total_size(),
         file_size: archive.file_size(),
         rejected: archive.rejected().to_vec(),
-        multi_segment: archive.multi_segment_paths().to_vec(),
     };
 
     let handle = state.insert(Session::new(path, archive));

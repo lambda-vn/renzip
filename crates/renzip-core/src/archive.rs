@@ -17,13 +17,23 @@ use crate::path::{self as safe_path, PathRejection};
 pub struct Entry {
     /// Path inside the archive, separators normalized to '/'.
     pub path: String,
-    /// Offset of the stored bytes inside the archive file.
+    /// Offset of the first segment's stored bytes inside the archive file.
+    ///
+    /// The one detail shown to a user; an entry made of several segments
+    /// (see [`Entry::segments`]) has no single meaningful offset, so this is
+    /// where reading it begins.
     pub offset: u64,
-    /// Size of the file once extracted, prefix included.
+    /// Size of the file once extracted, prefix and every segment included.
     pub length: u64,
     /// Bytes stored in the index that open the file content.
     #[serde(skip)]
     pub prefix: Vec<u8>,
+    /// Byte ranges to read from the archive and concatenate, in order, to
+    /// get the file content after `prefix`. Almost always a single range;
+    /// more than one when the index listed several `(offset, length)` tuples
+    /// for this entry, which Ren'Py itself reads by concatenating them.
+    #[serde(skip)]
+    pub segments: Vec<(u64, u64)>,
 }
 
 /// An entry the archive announced but that will not be extracted.
@@ -96,7 +106,6 @@ pub struct Archive {
     entries: Vec<Entry>,
     by_path: HashMap<String, usize>,
     rejected: Vec<Rejection>,
-    multi_segment: Vec<String>,
 }
 
 impl std::fmt::Debug for Archive {
@@ -152,7 +161,7 @@ impl Archive {
             }
         };
 
-        let (entries, rejected, multi_segment) = validate(raw_entries, file_size);
+        let (entries, rejected) = validate(raw_entries, file_size);
         let by_path = entries
             .iter()
             .enumerate()
@@ -167,7 +176,6 @@ impl Archive {
             entries,
             by_path,
             rejected,
-            multi_segment,
         })
     }
 
@@ -196,14 +204,6 @@ impl Archive {
         &self.rejected
     }
 
-    /// Paths whose index listed more than one tuple.
-    ///
-    /// Ren'Py reads only the first, and so does this crate; the list exists so
-    /// the application can say out loud that something was left behind.
-    pub fn multi_segment_paths(&self) -> &[String] {
-        &self.multi_segment
-    }
-
     /// Total extracted size of every usable entry.
     pub fn total_size(&self) -> u64 {
         self.entries.iter().map(|entry| entry.length).sum()
@@ -225,16 +225,25 @@ impl Archive {
             .ok_or_else(|| Error::EntryNotFound(path.to_string()))?;
         let entry = self.entries[index].clone();
 
-        let data_len = entry.length - entry.prefix.len() as u64;
         let mut buffer = Vec::with_capacity(entry.length as usize);
         buffer.extend_from_slice(&entry.prefix);
-        self.file
-            .seek(SeekFrom::Start(entry.offset))
-            .map_err(|e| Error::io(&self.path, e))?;
-        (&mut self.file)
-            .take(data_len)
-            .read_to_end(&mut buffer)
-            .map_err(|e| Error::io(&self.path, e))?;
+        for (i, &(offset, length)) in entry.segments.iter().enumerate() {
+            // The first segment's declared length still includes the prefix
+            // when there is one (only ever true for a single-segment entry);
+            // every later segment is read in full.
+            let read_len = if i == 0 {
+                length - entry.prefix.len() as u64
+            } else {
+                length
+            };
+            self.file
+                .seek(SeekFrom::Start(offset))
+                .map_err(|e| Error::io(&self.path, e))?;
+            (&mut self.file)
+                .take(read_len)
+                .read_to_end(&mut buffer)
+                .map_err(|e| Error::io(&self.path, e))?;
+        }
 
         if buffer.len() as u64 != entry.length {
             return Err(Error::Truncated(format!(
@@ -370,20 +379,21 @@ fn read_header(file: &mut File, path: &Path) -> Result<Header> {
 
 /// Check every raw entry against the path rules and the archive bounds.
 ///
-/// Returns the usable entries sorted by path, the refused ones, and the paths
-/// whose index held more than one tuple.
-fn validate(
-    raw_entries: Vec<RawEntry>,
-    file_size: u64,
-) -> (Vec<Entry>, Vec<Rejection>, Vec<String>) {
+/// Returns the usable entries sorted by path, and the refused ones.
+fn validate(raw_entries: Vec<RawEntry>, file_size: u64) -> (Vec<Entry>, Vec<Rejection>) {
     let mut entries = Vec::with_capacity(raw_entries.len());
     let mut rejected = Vec::new();
-    let mut multi_segment = Vec::new();
     let mut seen: HashMap<String, ()> = HashMap::with_capacity(raw_entries.len());
 
     for raw in raw_entries {
-        if raw.segment_count > 1 {
-            multi_segment.push(raw.path.clone());
+        if raw.segments.is_empty() {
+            rejected.push(Rejection {
+                path: raw.path,
+                reason: "index lists several tuples for this entry and at least one is not \
+                    a plain (offset, length) pair; Ren'Py cannot read this entry either"
+                    .into(),
+            });
+            continue;
         }
         if let Err(rejection) = safe_path::sanitize(&raw.path) {
             rejected.push(Rejection {
@@ -408,33 +418,55 @@ fn validate(
             });
             continue;
         }
+        // A single segment's declared length already includes the prefix
+        // (out_of_bounds just checked it fits); several segments never carry
+        // one, so their declared lengths sum to the whole entry directly.
+        let length = if raw.segments.len() == 1 {
+            raw.segments[0].1
+        } else {
+            raw.segments.iter().map(|&(_, len)| len).sum()
+        };
         entries.push(Entry {
             path: normalized,
-            offset: raw.offset,
-            length: raw.length,
+            offset: raw.segments[0].0,
+            length,
             prefix: raw.prefix,
+            segments: raw.segments,
         });
     }
 
     entries.sort_by(|a, b| a.path.cmp(&b.path));
-    (entries, rejected, multi_segment)
+    (entries, rejected)
 }
 
 /// Describe why a byte range cannot be read, if that is the case.
 fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<String> {
-    let prefix_len = raw.prefix.len() as u64;
-    if prefix_len > raw.length {
-        return Some(format!(
-            "declares a {} byte prefix inside a {} byte entry",
-            prefix_len, raw.length
-        ));
+    if raw.segments.len() == 1 {
+        let (offset, length) = raw.segments[0];
+        let prefix_len = raw.prefix.len() as u64;
+        if prefix_len > length {
+            return Some(format!(
+                "declares a {prefix_len} byte prefix inside a {length} byte entry"
+            ));
+        }
+        let end = offset.checked_add(length - prefix_len)?;
+        if end > file_size {
+            return Some(format!(
+                "declares bytes {offset}..{end} of a {file_size} byte archive"
+            ));
+        }
+        return None;
     }
-    let end = raw.offset.checked_add(raw.length - prefix_len)?;
-    if end > file_size {
-        return Some(format!(
-            "declares bytes {}..{} of a {} byte archive",
-            raw.offset, end, file_size
-        ));
+
+    // Several segments, concatenated with no prefix: each is checked against
+    // the archive on its own, the way Ren'Py reads each one on its own.
+    for &(offset, length) in &raw.segments {
+        let end = offset.checked_add(length)?;
+        if end > file_size {
+            return Some(format!(
+                "declares a segment at bytes {offset}..{end} of a {file_size} byte archive"
+            ));
+        }
     }
     None
 }
@@ -526,13 +558,21 @@ fn write_entry(
 
     out.write_all(&entry.prefix)
         .map_err(|e| format!("cannot write {}: {e}", target.display()))?;
-    file.seek(SeekFrom::Start(entry.offset))
-        .map_err(|e| format!("cannot read {}: {e}", archive.display()))?;
-    let copied = std::io::copy(
-        &mut file.take(entry.length - entry.prefix.len() as u64),
-        &mut out,
-    )
-    .map_err(|e| format!("cannot extract {}: {e}", entry.path))?;
+    let mut copied = 0u64;
+    for (i, &(offset, length)) in entry.segments.iter().enumerate() {
+        // The first segment's declared length still includes the prefix
+        // when there is one (only ever true for a single-segment entry);
+        // every later segment is copied in full.
+        let read_len = if i == 0 {
+            length - entry.prefix.len() as u64
+        } else {
+            length
+        };
+        file.seek(SeekFrom::Start(offset))
+            .map_err(|e| format!("cannot read {}: {e}", archive.display()))?;
+        copied += std::io::copy(&mut file.take(read_len), &mut out)
+            .map_err(|e| format!("cannot extract {}: {e}", entry.path))?;
+    }
     out.flush()
         .map_err(|e| format!("cannot write {}: {e}", target.display()))?;
 

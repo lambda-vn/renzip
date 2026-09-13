@@ -105,11 +105,6 @@ fn every_fixture_lists_and_reads_exactly_what_it_holds() {
             names(&description, "rejected"),
             "{name}: rejected"
         );
-        assert_eq!(
-            archive.multi_segment_paths(),
-            names(&description, "multi_segment"),
-            "{name}: multi segment"
-        );
     }
 }
 

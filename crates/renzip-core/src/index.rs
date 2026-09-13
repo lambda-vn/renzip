@@ -2,11 +2,14 @@
 //!
 //! The index is the only compressed part of an .rpa; file data is stored raw.
 //! Cross-checked against renpy/loader.py: the engine reads from the header
-//! offset to the end of the file, inflates it, unpickles a dict mapping a
-//! name to a list of tuples, and only ever looks at the first tuple of the
-//! list. A tuple holds (offset, length) or (offset, length, prefix); for
-//! RPA-3.x, offset and length are XORed with the header key while prefix is
-//! not.
+//! offset to the end of the file, inflates it, and unpickles a dict mapping a
+//! name to a list of tuples. A single tuple holds (offset, length) or
+//! (offset, length, prefix); for RPA-3.x, offset and length are XORed with
+//! the header key while prefix is not. A list of several tuples is read
+//! differently: the engine concatenates the bytes each `(offset, length)`
+//! pair names, in order, and never reads a prefix from one - unpacking a
+//! three-field tuple that way raises `ValueError`, which is why this crate
+//! refuses such an entry rather than guessing which field to drop.
 //!
 //! Unpickling here never runs code: serde-pickle turns opcodes into plain
 //! values, and a GLOBAL opcode is at most a name it recognizes, never a
@@ -33,18 +36,21 @@ pub const MAX_INDEX_BYTES: u64 = 256 * 1024 * 1024;
 pub struct RawEntry {
     /// Entry path, exactly as stored in the archive.
     pub path: String,
-    /// Offset of the entry data inside the archive, key already applied.
-    pub offset: u64,
-    /// Total size of the entry, prefix included, key already applied.
-    pub length: u64,
-    /// Bytes to prepend to the data read at `offset`.
-    pub prefix: Vec<u8>,
-    /// How many tuples the index listed for this path.
+    /// Byte ranges inside the archive holding this entry's data, as
+    /// `(offset, length)` pairs with the header key already applied, in the
+    /// order Ren'Py itself reads and concatenates them.
     ///
-    /// Ren'Py only ever reads the first one and so does this crate, but an
-    /// archive with more is unusual enough to be worth reporting rather than
-    /// swallowing.
-    pub segment_count: usize,
+    /// Empty when the index listed more than one tuple and at least one of
+    /// them was not a plain `(offset, length)` pair: Ren'Py's own loader
+    /// raises `ValueError` trying to read such an entry rather than reading
+    /// part of it, so this crate leaves it unreadable too instead of
+    /// guessing which field was meant.
+    pub segments: Vec<(u64, u64)>,
+    /// Bytes to prepend to the data read at the entry's one segment.
+    ///
+    /// Only ever set when there is exactly one segment: Ren'Py never reads a
+    /// prefix from a multi-segment entry.
+    pub prefix: Vec<u8>,
 }
 
 /// Inflate and unpickle an index, applying `key` to offsets and lengths.
@@ -114,51 +120,86 @@ fn decode_entry(path: String, tuples: Value, key: u64) -> Result<RawEntry> {
             "entry '{path}' is not a list of tuples"
         )));
     };
-    let segment_count = items.len();
-    let first = items
-        .into_iter()
-        .next()
-        .ok_or_else(|| Error::CorruptIndex(format!("entry '{path}' has no tuple")))?;
+    if items.is_empty() {
+        // Ren'Py itself indexes the empty list to read the first tuple and
+        // raises IndexError; there is no partial read to fall back to, so
+        // this is fatal the same way a stream that does not unpickle at all
+        // is, rather than something to route around one entry at a time.
+        return Err(Error::CorruptIndex(format!("entry '{path}' has no tuple")));
+    }
 
-    let Value::Tuple(fields) = first else {
+    if items.len() == 1 {
+        let fields = as_tuple_fields(&path, items.into_iter().next().unwrap())?;
+        if fields.len() != 2 && fields.len() != 3 {
+            return Err(Error::CorruptIndex(format!(
+                "entry '{path}' has {} fields, expected 2 or 3",
+                fields.len()
+            )));
+        }
+        let offset = decode_int(&fields[0], &path)? ^ key;
+        let length = decode_int(&fields[1], &path)? ^ key;
+        let prefix = decode_prefix(&path, fields.get(2))?;
+        return Ok(RawEntry {
+            path,
+            segments: vec![(offset, length)],
+            prefix,
+        });
+    }
+
+    // More than one tuple: Ren'Py concatenates the (offset, length) pair
+    // each one names. It never expects a third field there, and unpacking
+    // one that has it raises ValueError - an entry like that is left
+    // unreadable (empty segments) rather than guessed at, and the caller
+    // reports it as rejected instead of failing the whole archive over it.
+    let mut segments = Vec::with_capacity(items.len());
+    for item in items {
+        let fields = as_tuple_fields(&path, item)?;
+        if fields.len() != 2 {
+            return Ok(RawEntry {
+                path,
+                segments: Vec::new(),
+                prefix: Vec::new(),
+            });
+        }
+        let offset = decode_int(&fields[0], &path)? ^ key;
+        let length = decode_int(&fields[1], &path)? ^ key;
+        segments.push((offset, length));
+    }
+    Ok(RawEntry {
+        path,
+        segments,
+        prefix: Vec::new(),
+    })
+}
+
+/// Unwrap a pickled tuple's fields, or fail: a value that is not even a
+/// tuple is corrupt data, not an unusual but readable shape.
+fn as_tuple_fields(path: &str, value: Value) -> Result<Vec<Value>> {
+    let Value::Tuple(fields) = value else {
         return Err(Error::CorruptIndex(format!(
             "entry '{path}' is not described by a tuple"
         )));
     };
-    if fields.len() != 2 && fields.len() != 3 {
-        return Err(Error::CorruptIndex(format!(
-            "entry '{path}' has {} fields, expected 2 or 3",
-            fields.len()
-        )));
-    }
+    Ok(fields)
+}
 
-    let offset = decode_int(&fields[0], &path)? ^ key;
-    let length = decode_int(&fields[1], &path)? ^ key;
-    let prefix = match fields.get(2) {
-        None => Vec::new(),
-        Some(Value::Bytes(b)) => b.clone(),
+/// Decode a tuple's optional third field into prefix bytes.
+fn decode_prefix(path: &str, field: Option<&Value>) -> Result<Vec<u8>> {
+    match field {
+        None => Ok(Vec::new()),
+        Some(Value::Bytes(b)) => Ok(b.clone()),
         // An empty bytes object written at protocol 2, once its unmodelled
         // constructor has been replaced by None. Ren'Py stores exactly that
         // for every entry it packs without a prefix.
-        Some(Value::None) => Vec::new(),
+        Some(Value::None) => Ok(Vec::new()),
         // A prefix pickled by Python 2 arrives as a byte string too, but one
         // pickled from a unicode object arrives as a String; Ren'Py writes it
         // back out as latin-1, so that is how it is turned into bytes here.
-        Some(Value::String(s)) => s.chars().map(|c| c as u8).collect(),
-        Some(other) => {
-            return Err(Error::CorruptIndex(format!(
-                "entry '{path}' has a prefix that is not a byte string: {other:?}"
-            )))
-        }
-    };
-
-    Ok(RawEntry {
-        path,
-        offset,
-        length,
-        prefix,
-        segment_count,
-    })
+        Some(Value::String(s)) => Ok(s.chars().map(|c| c as u8).collect()),
+        Some(other) => Err(Error::CorruptIndex(format!(
+            "entry '{path}' has a prefix that is not a byte string: {other:?}"
+        ))),
+    }
 }
 
 /// Read one index integer, refusing anything that is not a plain positive int.
@@ -173,17 +214,24 @@ fn decode_int(value: &Value, path: &str) -> Result<u64> {
 
 /// Pickle and deflate an index, applying `key` to offsets and lengths.
 ///
-/// Protocol 2 is what Ren'Py itself writes, and it is the only protocol both
-/// Python 2 and Python 3 read, so an archive built here stays loadable by any
-/// engine version that can load the format at all.
+/// Protocol 2 is a deliberate choice, not what Ren'Py itself writes: its own
+/// archiver pickles at `HIGHEST_PROTOCOL`, which is 2 on the Python 2
+/// releases (up to 7.x) and 5 on Ren'Py 8's Python 3. Protocol 2 is the
+/// newest one both still read, so an archive built here stays loadable by
+/// either.
+///
+/// Every `entry` is written as a single tuple: this crate never builds a
+/// multi-segment archive, so `entry.segments` always holds exactly one
+/// range here.
 pub fn encode(entries: &[RawEntry], key: u64) -> Result<Vec<u8>> {
     let mut dict = BTreeMap::new();
     for entry in entries {
+        let (offset, length) = entry.segments[0];
         dict.insert(
             HashableValue::String(entry.path.clone()),
             Value::List(vec![Value::Tuple(vec![
-                Value::I64((entry.offset ^ key) as i64),
-                Value::I64((entry.length ^ key) as i64),
+                Value::I64((offset ^ key) as i64),
+                Value::I64((length ^ key) as i64),
                 Value::Bytes(entry.prefix.clone()),
             ])]),
         );
@@ -210,11 +258,21 @@ mod tests {
     fn entry(path: &str, offset: u64, length: u64, prefix: &[u8]) -> RawEntry {
         RawEntry {
             path: path.to_string(),
-            offset,
-            length,
+            segments: vec![(offset, length)],
             prefix: prefix.to_vec(),
-            segment_count: 1,
         }
+    }
+
+    /// Pickle (protocol 2) and deflate a [`Value`], the way an index is
+    /// stored, for tests that need to hand-build one no [`encode`] call
+    /// would produce.
+    fn compress_pickle(value: &Value) -> Vec<u8> {
+        let mut out = Vec::new();
+        serde_pickle::value_to_writer(&mut out, value, SerOptions::new()).unwrap();
+        let mut encoder =
+            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        std::io::Write::write_all(&mut encoder, &out).unwrap();
+        encoder.finish().unwrap()
     }
 
     #[test]
@@ -236,22 +294,57 @@ mod tests {
         // Read with the wrong key, the prefix survives and the numbers do not.
         let wrong = decode(&encoded[..], 0).unwrap();
         assert_eq!(wrong[0].prefix, b"pre");
-        assert_ne!(wrong[0].offset, 34);
+        assert_ne!(wrong[0].segments[0].0, 34);
+    }
+
+    #[test]
+    fn multiple_two_field_tuples_are_kept_as_segments_to_concatenate() {
+        let mut dict = BTreeMap::new();
+        dict.insert(
+            HashableValue::String("twice.txt".into()),
+            Value::List(vec![
+                Value::Tuple(vec![Value::I64(0), Value::I64(5)]),
+                Value::Tuple(vec![Value::I64(5), Value::I64(6)]),
+            ]),
+        );
+        let pickled = compress_pickle(&Value::Dict(dict));
+
+        assert_eq!(
+            decode(&pickled[..], 0).unwrap(),
+            vec![entry_with_segments("twice.txt", &[(0, 5), (5, 6)], b"")]
+        );
+    }
+
+    #[test]
+    fn a_three_field_tuple_among_several_is_left_with_no_segment() {
+        // Ren'Py's own loader unpacks every tuple of a multi-tuple entry as
+        // an (offset, length) pair; one with a third field raises
+        // ValueError there instead of reading part of the entry.
+        let mut dict = BTreeMap::new();
+        dict.insert(
+            HashableValue::String("bad.txt".into()),
+            Value::List(vec![
+                Value::Tuple(vec![Value::I64(0), Value::I64(5), Value::Bytes(vec![])]),
+                Value::Tuple(vec![Value::I64(5), Value::I64(6), Value::Bytes(vec![])]),
+            ]),
+        );
+        let pickled = compress_pickle(&Value::Dict(dict));
+
+        let decoded = decode(&pickled[..], 0).unwrap();
+        assert_eq!(decoded, vec![entry_with_segments("bad.txt", &[], b"")]);
+    }
+
+    fn entry_with_segments(path: &str, segments: &[(u64, u64)], prefix: &[u8]) -> RawEntry {
+        RawEntry {
+            path: path.to_string(),
+            segments: segments.to_vec(),
+            prefix: prefix.to_vec(),
+        }
     }
 
     #[test]
     fn refuses_a_stream_that_is_not_an_index() {
         assert!(decode(&b"not zlib at all"[..], 0).is_err());
-
-        let pickled_list = {
-            let mut out = Vec::new();
-            serde_pickle::value_to_writer(&mut out, &Value::List(vec![]), SerOptions::new())
-                .unwrap();
-            let mut encoder =
-                flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
-            std::io::Write::write_all(&mut encoder, &out).unwrap();
-            encoder.finish().unwrap()
-        };
-        assert!(decode(&pickled_list[..], 0).is_err());
+        assert!(decode(&compress_pickle(&Value::List(vec![]))[..], 0).is_err());
     }
 }
