@@ -290,7 +290,8 @@ fn canonical_prospective(path: &Path) -> Option<PathBuf> {
 ///
 /// Symbolic links are skipped rather than followed: a link is the one way a
 /// directory tree can pull in content from outside itself or loop forever,
-/// and neither belongs in an archive built from that tree.
+/// and neither belongs in an archive built from that tree. A `.rpa` or
+/// `.rpi` file is skipped too, at any depth: see [`is_archive_file`].
 fn collect_files(
     root: &Path,
     dir: &Path,
@@ -321,6 +322,11 @@ fn collect_files(
             });
         } else if file_type.is_dir() {
             collect_files(root, &path, files, skipped)?;
+        } else if is_archive_file(&path) {
+            skipped.push(Rejection {
+                path: name,
+                reason: "archive file: Ren'Py never opens one packed inside another".into(),
+            });
         } else if let Err(rejection) = safe_path::sanitize(&name) {
             skipped.push(Rejection {
                 path: name,
@@ -338,6 +344,20 @@ fn collect_files(
         }
     }
     Ok(())
+}
+
+/// Whether `path` names a `.rpa` or `.rpi` file, extension compared without
+/// regard to case.
+///
+/// Ren'Py only ever turns a `.rpa`/`.rpi` sitting directly on disk into an
+/// archive (`scandirfiles_from_filesystem` in `renpy/loader.py`, SDK 8.5.3
+/// around lines 431-454); it never looks inside one archive for another.
+/// Packing either into an archive built here would only ever be dead weight
+/// the engine cannot reach, so neither is ever worth including.
+fn is_archive_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("rpa") || ext.eq_ignore_ascii_case("rpi"))
 }
 
 /// Whether `path` falls under one of the `excludes`, at any depth.

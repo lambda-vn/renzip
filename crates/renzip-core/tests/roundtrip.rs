@@ -212,6 +212,36 @@ fn scan_lists_what_a_build_would_pack() {
 }
 
 #[test]
+fn archive_files_are_left_out_of_a_scan_at_any_depth_and_any_case() {
+    let work = tempfile::tempdir().unwrap();
+    let source = work.path().join("source");
+    std::fs::create_dir_all(source.join("sub")).unwrap();
+    std::fs::write(source.join("a.rpa"), b"not really an archive").unwrap();
+    std::fs::write(source.join("sub").join("b.RPI"), b"nor is this").unwrap();
+    std::fs::write(source.join("script.rpy"), b"label start:\n    return\n").unwrap();
+
+    let report = renzip_core::scan(&source).unwrap();
+
+    assert_eq!(
+        report
+            .files
+            .iter()
+            .map(|file| file.path.as_str())
+            .collect::<Vec<_>>(),
+        vec!["script.rpy"],
+        "{:?}",
+        report.files
+    );
+    for name in ["a.rpa", "sub/b.RPI"] {
+        assert!(
+            report.skipped.iter().any(|r| r.path == name),
+            "{name} should be reported as skipped: {:?}",
+            report.skipped
+        );
+    }
+}
+
+#[test]
 fn excluded_top_level_entries_are_left_out_of_a_build() {
     let work = tempfile::tempdir().unwrap();
     let source = work.path().join("source");
