@@ -202,7 +202,7 @@
       >
         <div class="flex justify-between gap-5 py-3">
           <span class="text-muted">{t("about.reads")}</span>
-          <span class="nums">RPA-1.0 · RPA-2.0 · RPA-3.0 · RPA-3.2</span>
+          <span class="nums">RPA-1.0 · RPA-2.0 · RPA-3.0 · RPA-3.2 · RPA-4.0</span>
         </div>
         <div
           class="flex justify-between gap-5 py-3"
