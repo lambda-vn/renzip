@@ -440,6 +440,11 @@ fn validate(raw_entries: Vec<RawEntry>, file_size: u64) -> (Vec<Entry>, Vec<Reje
 }
 
 /// Describe why a byte range cannot be read, if that is the case.
+///
+/// A range whose end does not even fit in a `u64` is out of bounds too: the
+/// header key is XORed into offsets and lengths, and a forged key can push
+/// both past 2^63, where adding them overflows instead of landing past the
+/// end of the file.
 fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<String> {
     if raw.segments.len() == 1 {
         let (offset, length) = raw.segments[0];
@@ -449,7 +454,12 @@ fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<String> {
                 "declares a {prefix_len} byte prefix inside a {length} byte entry"
             ));
         }
-        let end = offset.checked_add(length - prefix_len)?;
+        let stored = length - prefix_len;
+        let Some(end) = offset.checked_add(stored) else {
+            return Some(format!(
+                "declares {stored} bytes at offset {offset}, past the end of any file"
+            ));
+        };
         if end > file_size {
             return Some(format!(
                 "declares bytes {offset}..{end} of a {file_size} byte archive"
@@ -461,7 +471,11 @@ fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<String> {
     // Several segments, concatenated with no prefix: each is checked against
     // the archive on its own, the way Ren'Py reads each one on its own.
     for &(offset, length) in &raw.segments {
-        let end = offset.checked_add(length)?;
+        let Some(end) = offset.checked_add(length) else {
+            return Some(format!(
+                "declares a segment of {length} bytes at offset {offset}, past the end of any file"
+            ));
+        };
         if end > file_size {
             return Some(format!(
                 "declares a segment at bytes {offset}..{end} of a {file_size} byte archive"
@@ -584,4 +598,32 @@ fn write_entry(
         ));
     }
     Ok(written)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn raw(segments: Vec<(u64, u64)>) -> RawEntry {
+        RawEntry {
+            path: "a.txt".into(),
+            segments,
+            prefix: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn a_range_whose_end_overflows_is_out_of_bounds() {
+        // A forged header key can XOR offsets and lengths past 2^63, where
+        // their sum no longer fits in a u64.
+        let huge = u64::MAX - 1;
+        assert!(out_of_bounds(&raw(vec![(huge, 10)]), 1000).is_some());
+        assert!(out_of_bounds(&raw(vec![(0, 4), (huge, 10)]), 1000).is_some());
+    }
+
+    #[test]
+    fn a_range_inside_the_file_is_accepted() {
+        assert!(out_of_bounds(&raw(vec![(10, 5)]), 15).is_none());
+        assert!(out_of_bounds(&raw(vec![(10, 5), (0, 3)]), 15).is_none());
+    }
 }
