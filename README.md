@@ -136,7 +136,8 @@ Unit tests beside the code, integration tests in
 
 The fixtures cover an RPA-2.0, an RPA-3.0, an RPA-3.2, an RPA-4.0, a legacy 1.0
 archive with files split into several blocks, an archive written the way
-Ren'Py's own archiver does, one whose entries carry a prefix, an empty one, a
+Ren'Py's own archiver does, one written by that archiver itself under the
+Python 2 of a Ren'Py 6.18 SDK, one whose entries carry a prefix, an empty one, a
 truncated one, one declaring bytes past the end of the file, one whose entries
 concatenate several segments, one with a segment no reader can make sense of
 either, and one full of hostile paths.

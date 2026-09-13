@@ -143,7 +143,8 @@ Tests unitaires à côté du code, tests d'intégration dans
 
 Les fixtures couvrent une RPA-2.0, une RPA-3.0, une RPA-3.2, une RPA-4.0, une
 1.0 dont les fichiers sont découpés en plusieurs blocs, une archive écrite
-comme le fait l'archiveur de Ren'Py lui-même, une dont les entrées portent un
+comme le fait l'archiveur de Ren'Py lui-même, une écrite par cet archiveur sous
+le Python 2 d'un SDK Ren'Py 6.18, une dont les entrées portent un
 préfixe, une vide, une tronquée, une déclarant des octets au-delà de la fin du
 fichier, une dont les entrées concatènent plusieurs segments, une avec un
 segment qu'aucun lecteur ne peut interpréter non plus, et une pleine de
