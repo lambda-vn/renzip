@@ -5,6 +5,10 @@
 //! and never calls this crate. Regenerate them with:
 //!
 //!     python scripts/make_fixtures.py
+//!
+//! One exception: renpy6-3.0.rpa is written by the archiver of a Ren'Py 6.18
+//! SDK, through scripts/make_python2_fixture.py, which needs that SDK;
+//! make_fixtures.py only writes its expectation.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

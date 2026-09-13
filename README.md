@@ -84,7 +84,7 @@ binary later.
 
 ## Requirements
 
-- Rust stable, 1.77.2 or newer, which is what Tauri 2 asks for.
+- Rust stable, 1.88 or newer, the oldest release every dependency accepts.
 - Node 20 or newer.
 - The Tauri system dependencies for your platform, listed in the
   [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). On Debian
@@ -172,8 +172,11 @@ crates/renzip-core/    The format, with no Tauri dependency
   src/archive.rs       Opening, listing, reading, extracting
   src/builder.rs       Scanning a directory and writing an archive
   src/path.rs          Entry path sanitizing and containment
+  src/error.rs         Errors that stop an operation
+  src/reason.rs        Why an entry is skipped or refused
   tests/               Fixture reading and the roundtrip test
 src-tauri/             Commands, window, progress events
+  src/error.rs         What a failed command returns to the window
   src/desktop.rs       Handing a file to the desktop, per platform
   src/preview.rs       Deciding what to show for an entry
   src/state.rs         Open archives and their scratch directories
@@ -181,6 +184,7 @@ src/                   Svelte 5 frontend
   lib/EntryTree.svelte The one list of the main window
   lib/VirtualList.svelte  Hand-written virtualisation, no dependency
   lib/i18n.svelte.ts   French and English
+docs/                  The format, and where each fact was checked
 scripts/               Fixtures, icon, commit message hook
 tests/fixtures/        Archives to read, and what they must produce
 ```

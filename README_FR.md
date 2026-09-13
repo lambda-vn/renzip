@@ -88,7 +88,8 @@ ouverte à un binaire en ligne de commande plus tard.
 
 ## Prérequis
 
-- Rust stable, 1.77.2 ou plus récent, ce que réclame Tauri 2.
+- Rust stable, 1.88 ou plus récent, la plus ancienne version qu'acceptent
+  toutes les dépendances.
 - Node 20 ou plus récent.
 - Les dépendances système de Tauri pour votre plateforme, listées dans les
   [prérequis Tauri](https://v2.tauri.app/start/prerequisites/). Sur Debian et
@@ -181,8 +182,11 @@ crates/renzip-core/    Le format, sans dépendance à Tauri
   src/archive.rs       Ouverture, listing, lecture, extraction
   src/builder.rs       Parcours d'un dossier et écriture d'une archive
   src/path.rs          Assainissement des chemins et confinement
+  src/error.rs         Erreurs qui interrompent une opération
+  src/reason.rs        Pourquoi une entrée est ignorée ou refusée
   tests/               Lecture des fixtures et test de boucle
 src-tauri/             Commandes, fenêtre, événements de progression
+  src/error.rs         Ce qu'une commande en échec renvoie à la fenêtre
   src/desktop.rs       Confier un fichier au bureau, par plateforme
   src/preview.rs       Décider quoi afficher pour une entrée
   src/state.rs         Archives ouvertes et leurs dossiers temporaires
@@ -190,6 +194,7 @@ src/                   Frontend Svelte 5
   lib/EntryTree.svelte L'unique liste de la fenêtre principale
   lib/VirtualList.svelte  Virtualisation écrite à la main, sans dépendance
   lib/i18n.svelte.ts   Français et anglais
+docs/                  Le format, et où chaque fait a été vérifié
 scripts/               Fixtures, icône, hook de message de commit
 tests/fixtures/        Archives à lire, et ce qu'elles doivent produire
 ```

@@ -66,6 +66,8 @@ using hyphens as separators.
 | `fixtures`   | Test archives and the script that writes them (`scripts/make_fixtures.py`)  |
 | `ci`         | GitHub Actions workflows                                                    |
 | `deps`       | Cargo or npm dependency changes                                             |
+| `security`   | Hardening against hostile input across modules (`SECURITY.md`)              |
+| `release`    | Version bumps in `Cargo.toml`, `package.json` and `tauri.conf.json`         |
 
 The scope is **optional** but should be included whenever the change is confined
 to a clearly identifiable area. Omit it only for cross-cutting changes that affect
