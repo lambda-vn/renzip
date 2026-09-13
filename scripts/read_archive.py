@@ -35,7 +35,7 @@ def read_index(handle, path):
     parts = line.split()
     magic = parts[0].decode("ascii", "replace") if parts else ""
 
-    if magic not in ("RPA-2.0", "RPA-3.0", "RPA-3.2"):
+    if magic not in ("RPA-2.0", "RPA-3.0", "RPA-3.2", "RPA-4.0"):
         index_path = path.with_suffix(".rpi")
         if not index_path.is_file():
             raise SystemExit(f"unsupported header: {line!r}")
@@ -43,7 +43,7 @@ def read_index(handle, path):
 
     offset = int(parts[1], 16)
     key = 0
-    if magic in ("RPA-3.0", "RPA-3.2"):
+    if magic in ("RPA-3.0", "RPA-3.2", "RPA-4.0"):
         for subkey in parts[3 if magic == "RPA-3.2" else 2:]:
             key ^= int(subkey, 16)
 
