@@ -23,6 +23,8 @@ pub enum Version {
     Rpa3_0,
     /// Same as 3.0 with one extra header field before the key.
     Rpa3_2,
+    /// Same structure as 3.0; seen only in games with a modified loader.
+    Rpa4_0,
 }
 
 impl Version {
@@ -33,6 +35,7 @@ impl Version {
             Version::Rpa2_0 => "RPA-2.0",
             Version::Rpa3_0 => "RPA-3.0",
             Version::Rpa3_2 => "RPA-3.2",
+            Version::Rpa4_0 => "RPA-4.0",
         }
     }
 }
@@ -78,6 +81,7 @@ pub fn parse_line(line: &str) -> Result<Header> {
         "RPA-2.0" => (Version::Rpa2_0, None),
         "RPA-3.0" => (Version::Rpa3_0, Some(1)),
         "RPA-3.2" => (Version::Rpa3_2, Some(2)),
+        "RPA-4.0" => (Version::Rpa4_0, Some(1)),
         _ => return Err(unsupported()),
     };
 
@@ -149,6 +153,15 @@ mod tests {
     }
 
     #[test]
+    fn parses_rpa_4_0_like_rpa_3_0() {
+        // Real header seen in the wild (Lattyware/unrpa#22).
+        let header = parse_line("RPA-4.0 0000000027d75111 00000042").unwrap();
+        assert_eq!(header.version, Version::Rpa4_0);
+        assert_eq!(header.index_offset, 0x27d7_5111);
+        assert_eq!(header.key, 0x42);
+    }
+
+    #[test]
     fn rejects_unknown_or_incomplete_headers() {
         assert!(parse_line("PK\u{3}\u{4}").is_err());
         assert!(parse_line("RPA-3.0 0000000000000010").is_err());
@@ -165,5 +178,6 @@ mod tests {
         assert_eq!(parsed.key, 0xdead_beef);
 
         assert!(format_line(Version::Rpa3_2, 0, 0).is_err());
+        assert!(format_line(Version::Rpa4_0, 0, 0).is_err());
     }
 }
