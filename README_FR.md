@@ -57,12 +57,14 @@ l'aperçu d'une entrée au sein d'une archive de quatre gigaoctets.
 | RPA-2.0 | oui | oui | Offsets et longueurs en clair |
 | RPA-3.0 | oui | oui | Offsets et longueurs obfusqués par XOR avec une clé |
 | RPA-3.2 | oui | non | Un champ d'en-tête supplémentaire avant la clé |
+| RPA-4.0 | oui | non | Même structure que la 3.0, seul le marqueur change |
 
-La 3.2 n'est proposée nulle part en écriture. La forme de son en-tête n'est
-plus un mystère : offset, un champ supplémentaire inutilisé, puis la clé
-(confirmé par le développeur de Zeliria Sanctuary, le seul jeu connu à
-l'utiliser, et par Shizmob/rpatool#9) — cette bibliothèque pourrait donc en
-écrire une. Mais aucun Ren'Py standard ne lit la RPA-3.2 : un jeu qui en ouvre
+Ni la 3.2 ni la 4.0 ne sont proposées en écriture. La forme de leur en-tête
+n'est plus un mystère : celle de la 3.2 est offset, un champ supplémentaire
+inutilisé, puis la clé (confirmé par le développeur de Zeliria Sanctuary, le
+seul jeu connu à l'utiliser, et par Shizmob/rpatool#9) ; celle de la 4.0 est
+la même que celle de la 3.0 (Lattyware/unrpa#22) — cette bibliothèque pourrait
+donc en écrire. Mais aucun Ren'Py standard ne les lit : un jeu qui en ouvre
 une embarque un chargeur modifié, donc écrire une archive que le moteur
 lui-même ne peut pas lire serait pire que refuser, quoi que dise l'en-tête.
 L'écran des paramètres le dit, plutôt que de masquer l'option.
@@ -139,13 +141,13 @@ Tests unitaires à côté du code, tests d'intégration dans
   vérifie que les fichiers sont identiques bit à bit. C'est le test qui
   attrape une erreur de `prefix` ou de borne.
 
-Les fixtures couvrent une RPA-2.0, une RPA-3.0, une RPA-3.2, une 1.0 dont les
-fichiers sont découpés en plusieurs blocs, une archive écrite comme le fait
-l'archiveur de Ren'Py lui-même, une dont les entrées portent un préfixe, une
-vide, une tronquée, une déclarant des octets au-delà de la fin du fichier,
-une dont les entrées concatènent plusieurs segments, une avec un segment
-qu'aucun lecteur ne peut interpréter non plus, et une pleine de chemins
-malveillants.
+Les fixtures couvrent une RPA-2.0, une RPA-3.0, une RPA-3.2, une RPA-4.0, une
+1.0 dont les fichiers sont découpés en plusieurs blocs, une archive écrite
+comme le fait l'archiveur de Ren'Py lui-même, une dont les entrées portent un
+préfixe, une vide, une tronquée, une déclarant des octets au-delà de la fin du
+fichier, une dont les entrées concatènent plusieurs segments, une avec un
+segment qu'aucun lecteur ne peut interpréter non plus, et une pleine de
+chemins malveillants.
 
 ```bash
 cargo test --workspace

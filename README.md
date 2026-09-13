@@ -54,15 +54,16 @@ archive instant.
 | RPA-2.0 | yes | yes | Plain offsets and lengths |
 | RPA-3.0 | yes | yes | Offsets and lengths obfuscated by XOR with a key |
 | RPA-3.2 | yes | no | One extra header field before the key |
+| RPA-4.0 | yes | no | Same structure as 3.0, only the marker differs |
 
-3.2 is offered nowhere as a write target. Its header shape is no longer a
-mystery - offset, an extra unused field, then the key (confirmed by the
-developer of Zeliria Sanctuary, the one known game shipping it, and by
-Shizmob/rpatool#9) - so this crate could write one. But no standard Ren'Py
-build reads RPA-3.2 at all: a game that opens one embeds a modified loader,
-so writing an archive the engine itself cannot read would be a worse outcome
-than refusing, whatever the header says. The settings screen says so rather
-than hiding the option.
+Neither 3.2 nor 4.0 is offered as a write target. Their header shape is no
+longer a mystery - 3.2's is offset, an extra unused field, then the key
+(confirmed by the developer of Zeliria Sanctuary, the one known game shipping
+it, and by Shizmob/rpatool#9); 4.0's is the same as 3.0's (Lattyware/unrpa#22)
+- so this crate could write either. But no standard Ren'Py build reads them at
+all: a game that opens one embeds a modified loader, so writing an archive the
+engine itself cannot read would be a worse outcome than refusing, whatever the
+header says. The settings screen says so rather than hiding the option.
 
 Two things the format simply does not hold, and that the window therefore does
 not show: a checksum and a modification date. Nor a compressed size, since
@@ -133,10 +134,10 @@ Unit tests beside the code, integration tests in
   the files are identical byte for byte. That is the test that catches a
   mistake in the `prefix` handling or in a bound.
 
-The fixtures cover an RPA-2.0, an RPA-3.0, an RPA-3.2, a legacy 1.0 archive
-with files split into several blocks, an archive written the way Ren'Py's own
-archiver does, one whose entries carry a prefix, an empty one, a truncated
-one, one declaring bytes past the end of the file, one whose entries
+The fixtures cover an RPA-2.0, an RPA-3.0, an RPA-3.2, an RPA-4.0, a legacy 1.0
+archive with files split into several blocks, an archive written the way
+Ren'Py's own archiver does, one whose entries carry a prefix, an empty one, a
+truncated one, one declaring bytes past the end of the file, one whose entries
 concatenate several segments, one with a segment no reader can make sense of
 either, and one full of hostile paths.
 
