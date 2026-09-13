@@ -131,8 +131,8 @@ npm run build
 `svelte-check`, qui est à la fois le vérificateur de types et le linter
 d'accessibilité du frontend.
 
-`pre-commit install` branche les mêmes contrôles, plus le hook de message de
-commit.
+`pre-commit install` branche les mêmes contrôles, sauf les tests, plus le hook
+de message de commit.
 
 ### Tests
 

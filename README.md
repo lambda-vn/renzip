@@ -124,7 +124,8 @@ npm run build
 `npm run build` is not only a build: it runs `svelte-check` first, which is
 the type checker and the accessibility linter of the frontend.
 
-`pre-commit install` wires the same checks, plus the commit message hook.
+`pre-commit install` wires the same checks except the tests, plus the commit
+message hook.
 
 ### Tests
 

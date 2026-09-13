@@ -1,7 +1,15 @@
-# Formatting and linting run before a commit, the four checks the README
-# lists under Development.
+# Formatting, linting and type checking run before a commit: the checks the
+# README lists under Development, except the tests.
 # Local hooks on purpose: the toolchain is already installed to build the
 # project, so nothing extra is downloaded to check it.
+
+# `pre-commit install` alone installs the pre-commit hook type only, which
+# leaves the commit message unchecked. Listing both makes that one command
+# wire both, and the checks stay on the pre-commit stage instead of running
+# again when the message is validated.
+default_install_hook_types: [pre-commit, commit-msg]
+default_stages: [pre-commit]
+
 repos:
   - repo: local
     hooks:
