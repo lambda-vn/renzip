@@ -107,7 +107,10 @@
    *
    * An .rpa is opened; anything else is tried as a directory to pack, which
    * is also how a directory is told apart from a file here, since the drop
-   * only carries paths.
+   * only carries paths. Creation packs a single directory tree (unwanted
+   * parts are dropped afterward, once it is staged), so more than one path
+   * dropped at once - several files, several folders, or a mix - is refused
+   * with an explanation rather than silently packing only the first one.
    *
    * @param paths - What the drop carried.
    */
@@ -118,6 +121,10 @@
       return;
     }
     if (paths.length === 0) {
+      return;
+    }
+    if (paths.length > 1) {
+      app.status = { tone: "warn", text: t("create.drop.multiple") };
       return;
     }
     await app.stage(paths[0]);

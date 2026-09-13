@@ -152,6 +152,10 @@ const MESSAGES = {
     fr: "Choisissez un dossier à empaqueter.",
     en: "Choose a folder to pack.",
   },
+  "create.drop.multiple": {
+    fr: "Déposez un seul dossier : celui qui contient tout ce que vous voulez empaqueter. Ce qui ne doit pas y figurer peut être retiré une fois le dossier chargé.",
+    en: "Drop a single folder: the one containing everything you want to pack. Anything that should not be in it can be dropped once the folder is loaded.",
+  },
 
   "settings.general": { fr: "Général", en: "General" },
   "settings.archives": { fr: "Archives", en: "Archives" },
