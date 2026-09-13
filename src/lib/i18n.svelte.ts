@@ -282,6 +282,84 @@ const MESSAGES = {
     en: "This file is not a .rpa archive.",
   },
 
+  "reason.unreadable_segments": {
+    fr: "l'index décrit cette entrée en plusieurs blocs dont au moins un n'est pas une simple paire (offset, longueur) ; Ren'Py ne peut pas la lire non plus",
+    en: "index lists several tuples for this entry and at least one is not a plain (offset, length) pair; Ren'Py cannot read this entry either",
+  },
+  "reason.unsafe_path": { fr: "chemin dangereux : {rejection}", en: "unsafe path: {rejection}" },
+  "reason.prefix_too_long": {
+    fr: "déclare un préfixe de {prefix} octets dans une entrée de {length} octets",
+    en: "declares a {prefix} byte prefix inside a {length} byte entry",
+  },
+  "reason.past_end": {
+    fr: "déclare les octets {start} à {end} d'une archive de {size} octets",
+    en: "declares bytes {start}..{end} of a {size} byte archive",
+  },
+  "reason.segment_past_end": {
+    fr: "déclare un bloc aux octets {start} à {end} d'une archive de {size} octets",
+    en: "declares a segment at bytes {start}..{end} of a {size} byte archive",
+  },
+  "reason.range_overflow": {
+    fr: "déclare {length} octets à la position {offset}, au-delà de la fin de tout fichier",
+    en: "declares {length} bytes at offset {offset}, past the end of any file",
+  },
+  "reason.segment_overflow": {
+    fr: "déclare un bloc de {length} octets à la position {offset}, au-delà de la fin de tout fichier",
+    en: "declares a segment of {length} bytes at offset {offset}, past the end of any file",
+  },
+  "reason.duplicate_path": {
+    fr: "chemin en double : « {path} » est déjà dans l'archive",
+    en: "duplicate path, '{path}' is already in the archive",
+  },
+  "reason.no_file_name": { fr: "l'entrée n'a pas de nom de fichier", en: "entry has no file name" },
+  "reason.no_parent_directory": {
+    fr: "l'entrée n'a pas de dossier parent",
+    en: "entry has no parent directory",
+  },
+  "reason.already_written": {
+    fr: "une autre entrée de cette extraction a déjà écrit {path}",
+    en: "another entry of this extraction already wrote {path}",
+  },
+  "reason.outside_destination": { fr: "écrirait en dehors de {root}", en: "would write outside of {root}" },
+  "reason.archive_ends_early": {
+    fr: "l'archive s'arrête après {written} des {announced} octets annoncés",
+    en: "archive ends after {written} of the {announced} bytes announced",
+  },
+  "reason.destination_of_build": {
+    fr: "laissé de côté : c'est la destination de cette création",
+    en: "left out: this is the destination of this build",
+  },
+  "reason.symbolic_link": { fr: "lien symbolique", en: "symbolic link" },
+  "reason.archive_in_archive": {
+    fr: "fichier d'archive : Ren'Py n'en ouvre jamais une rangée dans une autre",
+    en: "archive file: Ren'Py never opens one packed inside another",
+  },
+  "reason.unusable_name": { fr: "nom inutilisable : {rejection}", en: "unusable name: {rejection}" },
+  "reason.io.create": { fr: "impossible de créer {path} : {error}", en: "cannot create {path}: {error}" },
+  "reason.io.resolve": { fr: "impossible de résoudre {path} : {error}", en: "cannot resolve {path}: {error}" },
+  "reason.io.replace_link": {
+    fr: "impossible de remplacer le lien {path} : {error}",
+    en: "cannot replace the link at {path}: {error}",
+  },
+  "reason.io.write": { fr: "impossible d'écrire {path} : {error}", en: "cannot write {path}: {error}" },
+  "reason.io.read": { fr: "impossible de lire {path} : {error}", en: "cannot read {path}: {error}" },
+  "reason.io.extract": { fr: "impossible d'extraire {path} : {error}", en: "cannot extract {path}: {error}" },
+  "reason.io.seek": {
+    fr: "impossible de se déplacer dans {path} : {error}",
+    en: "cannot seek in {path}: {error}",
+  },
+  "reason.io.store": { fr: "impossible de stocker {path} : {error}", en: "cannot store {path}: {error}" },
+  "path.empty": { fr: "chemin vide", en: "empty path" },
+  "path.absolute": { fr: "chemin absolu", en: "absolute path" },
+  "path.drive_letter": { fr: "lettre de lecteur", en: "drive letter" },
+  "path.traversal": { fr: "remontée hors du dossier (..)", en: "path traversal" },
+  "path.reserved_name": { fr: "nom réservé « {detail} »", en: "reserved name '{detail}'" },
+  "path.forbidden_character": { fr: "caractère interdit « {detail} »", en: "forbidden character '{detail}'" },
+  "path.trailing_dot_or_space": {
+    fr: "« {detail} » finit par un point ou une espace",
+    en: "component '{detail}' ends with a dot or a space",
+  },
+
   "count.entry.one": { fr: "{n} entrée", en: "{n} entry" },
   "count.entry.other": { fr: "{n} entrées", en: "{n} entries" },
   "count.file.one": { fr: "{n} fichier", en: "{n} file" },

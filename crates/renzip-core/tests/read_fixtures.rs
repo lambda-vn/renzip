@@ -173,7 +173,10 @@ fn an_entry_reaching_past_the_end_is_reported_not_read() {
     assert_eq!(archive.entries().len(), 1);
     assert_eq!(archive.rejected().len(), 1);
     assert!(
-        archive.rejected()[0].reason.contains("byte archive"),
+        matches!(
+            archive.rejected()[0].reason,
+            renzip_core::Reason::PastEnd { .. }
+        ),
         "{:?}",
         archive.rejected()[0]
     );

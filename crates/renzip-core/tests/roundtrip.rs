@@ -173,7 +173,10 @@ fn a_flat_extraction_drops_folders_and_refuses_to_overwrite_a_name_twice() {
     assert_eq!(report.skipped.len(), 1, "{:?}", report.skipped);
     assert!(report.skipped[0].path.ends_with("notes.txt"));
     assert!(
-        report.skipped[0].reason.contains("already wrote"),
+        matches!(
+            report.skipped[0].reason,
+            renzip_core::Reason::AlreadyWritten { .. }
+        ),
         "{:?}",
         report.skipped[0]
     );

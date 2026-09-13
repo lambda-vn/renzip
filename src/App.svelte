@@ -14,7 +14,7 @@
   import Icon from "./lib/Icon.svelte";
   import TitleBar from "./lib/TitleBar.svelte";
   import { launchPath, onProgress } from "./lib/api";
-  import { formatSize } from "./lib/format";
+  import { describeReason, formatSize } from "./lib/format";
   import { t, tn } from "./lib/i18n.svelte";
   import { app } from "./lib/store.svelte";
   import BrowseView from "./lib/views/BrowseView.svelte";
@@ -341,7 +341,7 @@
         </summary>
         <ul class="selectable mt-1 max-h-32 overflow-auto">
           {#each app.skipped as item (item.path)}
-            <li class="truncate"><code>{item.path}</code> : {item.reason}</li>
+            <li class="truncate"><code>{item.path}</code> : {describeReason(item.reason)}</li>
           {/each}
         </ul>
       </details>

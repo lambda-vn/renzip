@@ -9,10 +9,46 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
+/** Why an entry path cannot be trusted, mirroring `PathRejection`. */
+export type PathRejection =
+  | { kind: "empty" | "absolute" | "drive_letter" | "traversal" }
+  | { kind: "reserved_name" | "forbidden_character" | "trailing_dot_or_space"; detail: string };
+
+/** What a failed file system operation was doing, mirroring `IoAction`. */
+export type IoAction =
+  | "create"
+  | "resolve"
+  | "replace_link"
+  | "write"
+  | "read"
+  | "extract"
+  | "seek"
+  | "store";
+
+/** Why a file was left out or refused, mirroring `Reason`: a code and its details. */
+export type Reason =
+  | {
+      code:
+        | "unreadable_segments"
+        | "no_file_name"
+        | "no_parent_directory"
+        | "destination_of_build"
+        | "symbolic_link"
+        | "archive_in_archive";
+    }
+  | { code: "unsafe_path" | "unusable_name"; rejection: PathRejection }
+  | { code: "prefix_too_long"; prefix: number; length: number }
+  | { code: "past_end" | "segment_past_end"; start: number; end: number; size: number }
+  | { code: "range_overflow" | "segment_overflow"; offset: number; length: number }
+  | { code: "duplicate_path" | "already_written"; path: string }
+  | { code: "outside_destination"; root: string }
+  | { code: "archive_ends_early"; written: number; announced: number }
+  | { code: "io"; action: IoAction; path: string; error: string };
+
 /** An entry the archive announced but that will not be extracted. */
 export type Rejection = {
   path: string;
-  reason: string;
+  reason: Reason;
 };
 
 /** What is known about an archive right after it is opened. */

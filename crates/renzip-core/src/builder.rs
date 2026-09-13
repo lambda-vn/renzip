@@ -17,6 +17,7 @@ use crate::error::{Error, Result};
 use crate::header::{self, Version};
 use crate::index::{self, RawEntry};
 use crate::path as safe_path;
+use crate::reason::{IoAction, Reason};
 
 /// Key written into an RPA-3.0 header when the caller has no opinion.
 ///
@@ -142,7 +143,7 @@ pub fn build(
         if reserved.contains(&canonical_source.join(native)) {
             report.skipped.push(Rejection {
                 path: file.path,
-                reason: "left out: this is the destination of this build".into(),
+                reason: Reason::DestinationOfBuild,
             });
             continue;
         }
@@ -214,7 +215,7 @@ fn write_temp_archive(
         // The scan named every file relative to the root, so the path on disk
         // is that name below the root again.
         let path = source_dir.join(&name);
-        match store_file(&mut out, &path, offset) {
+        match store_file(&mut out, temp_path, &path, offset) {
             Ok(written) => {
                 entries.push(RawEntry {
                     path: name.clone(),
@@ -317,19 +318,19 @@ fn collect_files(
         if file_type.is_symlink() {
             skipped.push(Rejection {
                 path: name,
-                reason: "symbolic link".into(),
+                reason: Reason::SymbolicLink,
             });
         } else if file_type.is_dir() {
             collect_files(root, &path, files, skipped)?;
         } else if is_archive_file(&path) {
             skipped.push(Rejection {
                 path: name,
-                reason: "archive file: Ren'Py never opens one packed inside another".into(),
+                reason: Reason::ArchiveInArchive,
             });
         } else if let Err(rejection) = safe_path::sanitize(&name) {
             skipped.push(Rejection {
                 path: name,
-                reason: format!("unusable name: {rejection}"),
+                reason: Reason::UnusableName { rejection },
             });
         } else {
             let size = item
@@ -383,11 +384,17 @@ fn archive_name(root: &Path, path: &Path) -> String {
 
 /// Copy one file into the archive at `offset`, returning the bytes written.
 ///
-/// A file that cannot be read is reported rather than fatal: the size was
-/// read before the copy, and a file can be locked or removed in between.
-fn store_file(out: &mut File, path: &Path, offset: u64) -> std::result::Result<u64, String> {
-    let mut input = File::open(path).map_err(|e| format!("cannot read {}: {e}", path.display()))?;
+/// `archive` is the path `out` was opened from, named when moving inside it
+/// fails. A file that cannot be read is reported rather than fatal: the size
+/// was read before the copy, and a file can be locked or removed in between.
+fn store_file(
+    out: &mut File,
+    archive: &Path,
+    path: &Path,
+    offset: u64,
+) -> std::result::Result<u64, Reason> {
+    let mut input = File::open(path).map_err(|e| Reason::io(IoAction::Read, path.display(), e))?;
     out.seek(SeekFrom::Start(offset))
-        .map_err(|e| format!("cannot seek the archive: {e}"))?;
-    std::io::copy(&mut input, out).map_err(|e| format!("cannot store {}: {e}", path.display()))
+        .map_err(|e| Reason::io(IoAction::Seek, archive.display(), e))?;
+    std::io::copy(&mut input, out).map_err(|e| Reason::io(IoAction::Store, path.display(), e))
 }

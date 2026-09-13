@@ -9,8 +9,15 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use serde::Serialize;
+
 /// Why an entry path was refused.
-#[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Serializes as `{"kind": "..."}`, with a `detail` naming the offending part
+/// on the kinds that have one, so an interface can word it in its own
+/// language.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "kind", content = "detail", rename_all = "snake_case")]
 pub enum PathRejection {
     /// The path is empty or holds only separators and dots.
     Empty,

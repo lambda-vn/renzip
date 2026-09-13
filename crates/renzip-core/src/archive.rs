@@ -10,7 +10,8 @@ use serde::Serialize;
 use crate::error::{Error, Result};
 use crate::header::{self, Header, Version, MAX_HEADER_LEN};
 use crate::index::{self, RawEntry};
-use crate::path::{self as safe_path, PathRejection};
+use crate::path as safe_path;
+use crate::reason::{IoAction, Reason};
 
 /// One file stored in an archive, after every validation has passed.
 #[derive(Debug, Clone, Serialize)]
@@ -41,8 +42,9 @@ pub struct Entry {
 pub struct Rejection {
     /// Path as the archive spelled it.
     pub path: String,
-    /// Why it was refused, in a form fit to show to a user.
-    pub reason: String,
+    /// Why it was refused: a code an interface translates, whose `Display`
+    /// is an English sentence.
+    pub reason: Reason,
 }
 
 /// What an extraction is allowed to touch.
@@ -389,16 +391,14 @@ fn validate(raw_entries: Vec<RawEntry>, file_size: u64) -> (Vec<Entry>, Vec<Reje
         if raw.segments.is_empty() {
             rejected.push(Rejection {
                 path: raw.path,
-                reason: "index lists several tuples for this entry and at least one is not \
-                    a plain (offset, length) pair; Ren'Py cannot read this entry either"
-                    .into(),
+                reason: Reason::UnreadableSegments,
             });
             continue;
         }
         if let Err(rejection) = safe_path::sanitize(&raw.path) {
             rejected.push(Rejection {
                 path: raw.path,
-                reason: reason_of(&rejection),
+                reason: Reason::UnsafePath { rejection },
             });
             continue;
         }
@@ -414,7 +414,7 @@ fn validate(raw_entries: Vec<RawEntry>, file_size: u64) -> (Vec<Entry>, Vec<Reje
         if seen.insert(normalized.clone(), ()).is_some() {
             rejected.push(Rejection {
                 path: raw.path,
-                reason: format!("duplicate path, '{normalized}' is already in the archive"),
+                reason: Reason::DuplicatePath { path: normalized },
             });
             continue;
         }
@@ -445,25 +445,29 @@ fn validate(raw_entries: Vec<RawEntry>, file_size: u64) -> (Vec<Entry>, Vec<Reje
 /// header key is XORed into offsets and lengths, and a forged key can push
 /// both past 2^63, where adding them overflows instead of landing past the
 /// end of the file.
-fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<String> {
+fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<Reason> {
     if raw.segments.len() == 1 {
         let (offset, length) = raw.segments[0];
         let prefix_len = raw.prefix.len() as u64;
         if prefix_len > length {
-            return Some(format!(
-                "declares a {prefix_len} byte prefix inside a {length} byte entry"
-            ));
+            return Some(Reason::PrefixTooLong {
+                prefix: prefix_len,
+                length,
+            });
         }
         let stored = length - prefix_len;
         let Some(end) = offset.checked_add(stored) else {
-            return Some(format!(
-                "declares {stored} bytes at offset {offset}, past the end of any file"
-            ));
+            return Some(Reason::RangeOverflow {
+                offset,
+                length: stored,
+            });
         };
         if end > file_size {
-            return Some(format!(
-                "declares bytes {offset}..{end} of a {file_size} byte archive"
-            ));
+            return Some(Reason::PastEnd {
+                start: offset,
+                end,
+                size: file_size,
+            });
         }
         return None;
     }
@@ -472,22 +476,17 @@ fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<String> {
     // the archive on its own, the way Ren'Py reads each one on its own.
     for &(offset, length) in &raw.segments {
         let Some(end) = offset.checked_add(length) else {
-            return Some(format!(
-                "declares a segment of {length} bytes at offset {offset}, past the end of any file"
-            ));
+            return Some(Reason::SegmentOverflow { offset, length });
         };
         if end > file_size {
-            return Some(format!(
-                "declares a segment at bytes {offset}..{end} of a {file_size} byte archive"
-            ));
+            return Some(Reason::SegmentPastEnd {
+                start: offset,
+                end,
+                size: file_size,
+            });
         }
     }
     None
-}
-
-/// Turn a path rejection into a message fit for a report.
-fn reason_of(rejection: &PathRejection) -> String {
-    format!("unsafe path: {rejection}")
 }
 
 /// Create the destination directory and return its canonical form.
@@ -523,35 +522,33 @@ fn write_entry(
     root: &Path,
     layout: Layout,
     taken: &mut HashSet<PathBuf>,
-) -> std::result::Result<u64, String> {
-    let mut relative = safe_path::sanitize(&entry.path).map_err(|r| reason_of(&r))?;
+) -> std::result::Result<u64, Reason> {
+    let mut relative =
+        safe_path::sanitize(&entry.path).map_err(|rejection| Reason::UnsafePath { rejection })?;
     if layout == Layout::Flat {
-        relative = PathBuf::from(
-            relative
-                .file_name()
-                .ok_or_else(|| "entry has no file name".to_string())?,
-        );
+        relative = PathBuf::from(relative.file_name().ok_or(Reason::NoFileName)?);
     }
     if !taken.insert(relative.clone()) {
-        return Err(format!(
-            "another entry of this extraction already wrote {}",
-            relative.display()
-        ));
+        return Err(Reason::AlreadyWritten {
+            path: relative.display().to_string(),
+        });
     }
     let target = root.join(&relative);
-    let parent = target
-        .parent()
-        .ok_or_else(|| "entry has no parent directory".to_string())?;
+    let parent = target.parent().ok_or(Reason::NoParentDirectory)?;
 
     std::fs::create_dir_all(parent)
-        .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+        .map_err(|e| Reason::io(IoAction::Create, parent.display(), e))?;
     // The path itself was checked before any of this, but a symbolic link
     // planted inside the destination could still point out of it, so the
     // directory that will really be written to is checked once it exists.
     match safe_path::is_contained(root, parent) {
         Ok(true) => {}
-        Ok(false) => return Err(format!("would write outside of {}", root.display())),
-        Err(e) => return Err(format!("cannot resolve {}: {e}", parent.display())),
+        Ok(false) => {
+            return Err(Reason::OutsideDestination {
+                root: root.display().to_string(),
+            })
+        }
+        Err(e) => return Err(Reason::io(IoAction::Resolve, parent.display(), e)),
     }
     // Same reasoning for the file: opening it would follow a link that was
     // there before us, so an existing link is removed rather than written
@@ -559,7 +556,7 @@ fn write_entry(
     if let Ok(metadata) = std::fs::symlink_metadata(&target) {
         if metadata.file_type().is_symlink() {
             std::fs::remove_file(&target)
-                .map_err(|e| format!("cannot replace the link at {}: {e}", target.display()))?;
+                .map_err(|e| Reason::io(IoAction::ReplaceLink, target.display(), e))?;
         }
     }
 
@@ -568,10 +565,10 @@ fn write_entry(
         .create(true)
         .truncate(true)
         .open(&target)
-        .map_err(|e| format!("cannot write {}: {e}", target.display()))?;
+        .map_err(|e| Reason::io(IoAction::Write, target.display(), e))?;
 
     out.write_all(&entry.prefix)
-        .map_err(|e| format!("cannot write {}: {e}", target.display()))?;
+        .map_err(|e| Reason::io(IoAction::Write, target.display(), e))?;
     let mut copied = 0u64;
     for (i, &(offset, length)) in entry.segments.iter().enumerate() {
         // The first segment's declared length still includes the prefix
@@ -583,19 +580,19 @@ fn write_entry(
             length
         };
         file.seek(SeekFrom::Start(offset))
-            .map_err(|e| format!("cannot read {}: {e}", archive.display()))?;
+            .map_err(|e| Reason::io(IoAction::Read, archive.display(), e))?;
         copied += std::io::copy(&mut file.take(read_len), &mut out)
-            .map_err(|e| format!("cannot extract {}: {e}", entry.path))?;
+            .map_err(|e| Reason::io(IoAction::Extract, &entry.path, e))?;
     }
     out.flush()
-        .map_err(|e| format!("cannot write {}: {e}", target.display()))?;
+        .map_err(|e| Reason::io(IoAction::Write, target.display(), e))?;
 
     let written = copied + entry.prefix.len() as u64;
     if written != entry.length {
-        return Err(format!(
-            "archive ends after {} of the {} bytes announced",
-            written, entry.length
-        ));
+        return Err(Reason::ArchiveEndsEarly {
+            written,
+            announced: entry.length,
+        });
     }
     Ok(written)
 }
