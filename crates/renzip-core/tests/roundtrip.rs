@@ -303,21 +303,23 @@ fn versions_this_crate_cannot_write_are_refused_before_any_file_is_touched() {
     write_sources(&source);
     let archive_path = work.path().join("nope.rpa");
 
-    let error = renzip_core::build(
-        &source,
-        &archive_path,
-        Version::Rpa3_2,
-        renzip_core::DEFAULT_KEY,
-        &[],
-        &mut |_| true,
-    )
-    .unwrap_err();
+    for version in [Version::Rpa3_2, Version::Rpa4_0] {
+        let error = renzip_core::build(
+            &source,
+            &archive_path,
+            version,
+            renzip_core::DEFAULT_KEY,
+            &[],
+            &mut |_| true,
+        )
+        .unwrap_err();
 
-    assert!(matches!(
-        error,
-        renzip_core::Error::UnsupportedWriteVersion(_)
-    ));
-    assert!(!archive_path.exists(), "no partial archive is left behind");
+        assert!(matches!(
+            error,
+            renzip_core::Error::UnsupportedWriteVersion(_)
+        ));
+        assert!(!archive_path.exists(), "no partial archive is left behind");
+    }
 }
 
 #[test]
