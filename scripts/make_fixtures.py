@@ -87,6 +87,49 @@ def write_archive(path, version, members, key=DEFAULT_KEY, index_offset=None):
     return contents
 
 
+OFFICIAL_KEY = 0x42424242
+OFFICIAL_PADDING = b"Made with Ren'Py."
+
+
+def write_official_style_archive(path, version, members):
+    """Write an archive the way Ren'Py's own archiver builds one.
+
+    launcher/game/archiver.rpy (unchanged from 6.99 to 8.5.3) uses a fixed
+    key, pads every member with the same banner before its bytes, always
+    writes a 3-field tuple with an empty byte-string prefix, and pickles the
+    index at the interpreter's highest protocol (5, on any Python that runs
+    Ren'Py 8). None of that is exercised by the other fixtures, which favor
+    protocol 2 and 2-field tuples for readability; this one exists to check
+    this crate against the shape an unmodified Ren'Py 8 install actually
+    produces, protocol 5 opcodes included.
+
+    Args:
+        path: Destination file.
+        version: Header version to write.
+        members: Mapping of member name to content.
+
+    Returns:
+        Mapping of member name to its content, for the expectations file.
+    """
+    key = OFFICIAL_KEY
+    head = header_line(version, 0, key)
+    body = bytearray()
+    index = {}
+    contents = {}
+
+    for name, content in members.items():
+        body += OFFICIAL_PADDING
+        offset = len(head) + len(body)
+        body += content
+        index[name] = [(offset ^ key, len(content) ^ key, b"")]
+        contents[name] = content
+
+    real_offset = len(head) + len(body)
+    payload = zlib.compress(pickle.dumps(index, protocol=pickle.HIGHEST_PROTOCOL))
+    path.write_bytes(header_line(version, real_offset, key) + bytes(body) + payload)
+    return contents
+
+
 def write_v1_archive(path, members):
     """Write an RPA-1.0 archive: raw data, index in a sibling .rpi file.
 
@@ -124,6 +167,13 @@ def main() -> None:
     ):
         contents = write_archive(FIXTURES / name, version, plain)
         expected[name] = {"version": version, "entries": encode(contents)}
+
+    official = {
+        "script.rpy": b'label start:\n    "Hello."\n    return\n',
+        "images/bg.png": BINARY_BLOB,
+    }
+    contents = write_official_style_archive(FIXTURES / "official-3.0.rpa", "RPA-3.0", official)
+    expected["official-3.0.rpa"] = {"version": "RPA-3.0", "entries": encode(contents)}
 
     # Prefixed members: the first bytes of the content live in the index and
     # not in the data area, which is where an off-by-one on length shows up.
