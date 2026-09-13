@@ -4,7 +4,7 @@
 //! Cross-checked against renpy/loader.py: the engine reads from the header
 //! offset to the end of the file, inflates it, and unpickles a dict mapping a
 //! name to a list of tuples. A single tuple holds (offset, length) or
-//! (offset, length, prefix); for RPA-3.x, offset and length are XORed with
+//! (offset, length, prefix); for RPA-3.x and 4.0, offset and length are XORed with
 //! the header key while prefix is not. A list of several tuples is read
 //! differently: the engine concatenates the bytes each `(offset, length)`
 //! pair names, in order, and never reads a prefix from one - unpacking a
