@@ -65,6 +65,10 @@ all: a game that opens one embeds a modified loader, so writing an archive the
 engine itself cannot read would be a worse outcome than refusing, whatever the
 header says. The settings screen says so rather than hiding the option.
 
+The format itself, how each Ren'Py release reads and writes it, and where each
+of those facts was checked are written down in
+[docs/rpa-format.md](docs/rpa-format.md).
+
 Two things the format simply does not hold, and that the window therefore does
 not show: a checksum and a modification date. Nor a compressed size, since
 nothing is compressed.

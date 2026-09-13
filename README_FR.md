@@ -69,6 +69,10 @@ une embarque un chargeur modifié, donc écrire une archive que le moteur
 lui-même ne peut pas lire serait pire que refuser, quoi que dise l'en-tête.
 L'écran des paramètres le dit, plutôt que de masquer l'option.
 
+Le format lui-même, la façon dont chaque version de Ren'Py le lit et l'écrit,
+et l'endroit où chacun de ces faits a été vérifié sont décrits, en anglais, dans
+[docs/rpa-format.md](docs/rpa-format.md).
+
 Deux choses que le format ne contient tout simplement pas, et que la fenêtre
 n'affiche donc pas : une somme de contrôle et une date de modification. Ni une
 taille compressée, puisque rien n'est compressé.
