@@ -289,3 +289,74 @@ fn versions_this_crate_cannot_write_are_refused_before_any_file_is_touched() {
     ));
     assert!(!archive_path.exists(), "no partial archive is left behind");
 }
+
+#[test]
+fn rebuilding_over_the_destination_excludes_it_from_its_own_build() {
+    let work = tempfile::tempdir().unwrap();
+    let source = work.path().join("source");
+    write_sources(&source);
+    // The destination sits inside the very directory being packed, as it does
+    // whenever a user recreates `archive.rpa` next to the game files it came
+    // from.
+    let archive_path = source.join("archive.rpa");
+
+    renzip_core::build(
+        &source,
+        &archive_path,
+        Version::Rpa3_0,
+        renzip_core::DEFAULT_KEY,
+        &[],
+        &mut |_| true,
+    )
+    .unwrap();
+
+    // Guard rail: before the fix, `store_file` reread the destination while
+    // writing it, so the second build below never returned, growing the file
+    // without end (148 bytes to 20 MB in milliseconds in the reproduction
+    // that found this bug). Watch the file size from another thread and kill
+    // the process well before it could fill the disk.
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let watch_stop = stop.clone();
+    let watch_path = archive_path.clone();
+    let watchdog = std::thread::spawn(move || {
+        const LIMIT: u64 = 20 * 1024 * 1024;
+        while !watch_stop.load(std::sync::atomic::Ordering::Relaxed) {
+            if let Ok(meta) = std::fs::metadata(&watch_path) {
+                if meta.len() > LIMIT {
+                    eprintln!(
+                        "runaway build: {} exceeded {LIMIT} bytes, aborting the process",
+                        watch_path.display()
+                    );
+                    std::process::exit(1);
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+    });
+
+    let report = renzip_core::build(
+        &source,
+        &archive_path,
+        Version::Rpa3_0,
+        renzip_core::DEFAULT_KEY,
+        &[],
+        &mut |_| true,
+    )
+    .unwrap();
+
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    watchdog.join().unwrap();
+
+    assert_eq!(report.entries, sources().len(), "{report:?}");
+    assert!(
+        report.skipped.iter().any(|r| r.path == "archive.rpa"),
+        "archive.rpa should be reported as skipped: {:?}",
+        report.skipped
+    );
+
+    let archive = Archive::open(&archive_path).unwrap();
+    assert!(
+        archive.entries().iter().all(|e| e.path != "archive.rpa"),
+        "the archive must not contain itself"
+    );
+}

@@ -8,7 +8,7 @@
 
 use std::fs::{File, OpenOptions};
 use std::io::{Seek, SeekFrom, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
@@ -91,6 +91,10 @@ pub fn scan(source_dir: &Path) -> Result<ScanReport> {
 /// creation screen lets a user drop something they staged by mistake, at
 /// any depth, before committing to a build.
 ///
+/// `dest_path` itself is left out of its own build even when it falls inside
+/// `source_dir`: recreating an archive in place must not fold the archive
+/// being replaced into the one being written.
+///
 /// `on_progress` is called once per stored file and stops the build when it
 /// returns `false`; a cancelled build leaves a partial file behind, which the
 /// caller is expected to delete.
@@ -113,16 +117,32 @@ pub fn build(
     let placeholder = header::format_line(version, 0, key)?;
     let key = if version == Version::Rpa2_0 { 0 } else { key };
 
+    // The destination may not exist yet, so only its parent needs to
+    // canonicalize; that is enough to compare it against the canonical paths
+    // the scan below produces.
+    let reserved_dest = canonical_prospective(dest_path);
+
     let scanned = scan(source_dir)?;
-    let files: Vec<SourceFile> = scanned
-        .files
-        .into_iter()
-        .filter(|file| !is_excluded(&file.path, excludes))
-        .collect();
-    let mut report = BuildReport {
-        skipped: scanned.skipped,
-        ..BuildReport::default()
-    };
+    let canonical_source = source_dir
+        .canonicalize()
+        .map_err(|e| Error::io(source_dir, e))?;
+    let mut report = BuildReport::default();
+    let mut files = Vec::with_capacity(scanned.files.len());
+    for file in scanned.files {
+        if is_excluded(&file.path, excludes) {
+            continue;
+        }
+        let native = file.path.replace('/', std::path::MAIN_SEPARATOR_STR);
+        if reserved_dest.as_deref() == Some(canonical_source.join(native).as_path()) {
+            report.skipped.push(Rejection {
+                path: file.path,
+                reason: "left out: this is the destination of this build".into(),
+            });
+            continue;
+        }
+        files.push(file);
+    }
+    report.skipped.extend(scanned.skipped);
 
     let mut out = OpenOptions::new()
         .write(true)
@@ -189,6 +209,18 @@ pub fn build(
     out.flush().map_err(|e| Error::io(dest_path, e))?;
 
     Ok(report)
+}
+
+/// Canonical path `path` resolves to, even when `path` itself does not exist
+/// yet: only its parent directory needs to, which lets a not-yet-created
+/// destination still be compared against the canonical paths a directory
+/// scan produces. `None` when the parent cannot be resolved, in which case
+/// nothing is excluded on `path`'s account.
+fn canonical_prospective(path: &Path) -> Option<PathBuf> {
+    let parent = path.parent().filter(|p| !p.as_os_str().is_empty())?;
+    let canonical_parent = parent.canonicalize().ok()?;
+    let file_name = path.file_name()?;
+    Some(canonical_parent.join(file_name))
 }
 
 /// Walk `dir` and collect one [`SourceFile`] per file found.
