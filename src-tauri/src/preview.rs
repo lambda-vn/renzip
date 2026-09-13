@@ -37,8 +37,24 @@ pub enum Preview {
         /// Size of the entry.
         size: u64,
         /// Why it is not being displayed.
-        reason: String,
+        reason: BinaryReason,
     },
+}
+
+/// Why an entry is announced as binary rather than displayed.
+///
+/// A code rather than a sentence, so the window decides what to say about
+/// each case, and in which language, without reading English text.
+#[derive(Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub enum BinaryReason {
+    /// Larger than a preview of its kind is allowed to read.
+    TooLarge {
+        /// The limit it went over, in bytes.
+        limit: u64,
+    },
+    /// Neither an image nor UTF-8 text.
+    NotText,
 }
 
 /// Refuse an entry that is too large before reading it, if it is.
@@ -48,9 +64,9 @@ pub fn too_big(path: &str, size: u64) -> Option<Preview> {
     } else {
         TEXT_LIMIT
     };
-    (size > limit).then(|| Preview::Binary {
+    (size > limit).then_some(Preview::Binary {
         size,
-        reason: format!("too large to preview, over {} KiB", limit / 1024),
+        reason: BinaryReason::TooLarge { limit },
     })
 }
 
@@ -69,7 +85,7 @@ pub fn of(path: &str, bytes: Vec<u8>) -> Preview {
         Ok(content) if !content.contains('\u{0}') => Preview::Text { content },
         _ => Preview::Binary {
             size,
-            reason: "not UTF-8 text".into(),
+            reason: BinaryReason::NotText,
         },
     }
 }
@@ -101,7 +117,10 @@ mod tests {
         ));
         assert!(matches!(
             of("data.bin", vec![0x00, 0x01, 0x02]),
-            Preview::Binary { .. }
+            Preview::Binary {
+                reason: BinaryReason::NotText,
+                ..
+            }
         ));
         assert!(matches!(
             of("images/bg.png", vec![0x89, b'P', b'N', b'G']),
@@ -114,5 +133,17 @@ mod tests {
         assert!(too_big("script.rpy", TEXT_LIMIT + 1).is_some());
         assert!(too_big("bg.png", TEXT_LIMIT + 1).is_none());
         assert!(too_big("bg.png", IMAGE_LIMIT + 1).is_some());
+    }
+
+    #[test]
+    fn a_refusal_is_a_code_with_the_limit_it_went_over() {
+        let Some(Preview::Binary { reason, .. }) = too_big("script.rpy", TEXT_LIMIT + 1) else {
+            panic!("a text entry over the limit is refused");
+        };
+        assert_eq!(reason, BinaryReason::TooLarge { limit: TEXT_LIMIT });
+        assert_eq!(
+            serde_json::to_value(&reason).unwrap(),
+            serde_json::json!({"code": "too_large", "limit": TEXT_LIMIT})
+        );
     }
 }

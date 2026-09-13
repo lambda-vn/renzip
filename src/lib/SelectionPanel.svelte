@@ -9,6 +9,7 @@
    * click on the row.
    */
   import Icon from "./Icon.svelte";
+  import type { BinaryReason } from "./api";
   import { formatSize } from "./format";
   import { t, tn } from "./i18n.svelte";
   import { glyphOf, typeLabel } from "./kinds";
@@ -48,11 +49,11 @@
   /**
    * Note under the icon of a file with nothing to show.
    *
-   * The backend says why in its own words; only the size refusal is worth
+   * The backend says why with a code; only the size refusal is worth
    * repeating, since the icon already says what the file is.
    */
-  function sizeNote(reason: string): string {
-    return reason.includes("too large") ? t("panel.tooBig") : "";
+  function sizeNote(reason: BinaryReason): string {
+    return reason.code === "too_large" ? t("panel.tooBig") : "";
   }
 </script>
 

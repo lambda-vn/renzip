@@ -86,11 +86,14 @@ export type ScanReport = {
 /** How extracted files are laid out under the destination directory. */
 export type Layout = "Tree" | "Flat";
 
+/** Why an entry has nothing to show, mirroring `BinaryReason`. */
+export type BinaryReason = { code: "too_large"; limit: number } | { code: "not_text" };
+
 /** What the window should render for one entry. */
 export type Preview =
   | { kind: "text"; content: string }
   | { kind: "image"; data_url: string }
-  | { kind: "binary"; size: number; reason: string };
+  | { kind: "binary"; size: number; reason: BinaryReason };
 
 /** Outcome of an extraction. */
 export type ExtractionReport = {
