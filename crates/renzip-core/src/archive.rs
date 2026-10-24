@@ -13,6 +13,9 @@ use crate::index::{self, RawEntry};
 use crate::path as safe_path;
 use crate::reason::{IoAction, Reason};
 
+/// Largest buffer reserved up front when reading an entry into memory.
+const READ_CAPACITY_HINT: usize = 64 * 1024 * 1024;
+
 /// One file stored in an archive, after every validation has passed.
 #[derive(Debug, Clone, Serialize)]
 pub struct Entry {
@@ -210,7 +213,9 @@ impl Archive {
 
     /// Total extracted size of every usable entry.
     pub fn total_size(&self) -> u64 {
-        self.entries.iter().map(|entry| entry.length).sum()
+        self.entries
+            .iter()
+            .fold(0, |total, entry| u64::saturating_add(total, entry.length))
     }
 
     /// Read one entry into memory.
@@ -228,7 +233,13 @@ impl Archive {
         })?;
         let entry = self.entries[index].clone();
 
-        let mut buffer = Vec::with_capacity(entry.length as usize);
+        // Only a hint: a forged index can announce far more than the file
+        // holds (the same range listed again and again), and the buffer grows
+        // by what is actually read.
+        let hint = usize::try_from(entry.length)
+            .unwrap_or(usize::MAX)
+            .min(READ_CAPACITY_HINT);
+        let mut buffer = Vec::with_capacity(hint);
         buffer.extend_from_slice(&entry.prefix);
         for (i, &(offset, length)) in entry.segments.iter().enumerate() {
             // The first segment's declared length still includes the prefix
@@ -475,6 +486,9 @@ fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<Reason> {
 
     // Several segments, concatenated with no prefix: each is checked against
     // the archive on its own, the way Ren'Py reads each one on its own.
+    // The same range may be listed any number of times, so the entry's total
+    // length can exceed the file and must itself fit in a `u64`.
+    let mut total: u64 = 0;
     for &(offset, length) in &raw.segments {
         let Some(end) = offset.checked_add(length) else {
             return Some(Reason::SegmentOverflow { offset, length });
@@ -486,6 +500,10 @@ fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<Reason> {
                 size: file_size,
             });
         }
+        let Some(sum) = total.checked_add(length) else {
+            return Some(Reason::SegmentOverflow { offset, length });
+        };
+        total = sum;
     }
     None
 }
@@ -617,6 +635,13 @@ mod tests {
         let huge = u64::MAX - 1;
         assert!(out_of_bounds(&raw(vec![(huge, 10)]), 1000).is_some());
         assert!(out_of_bounds(&raw(vec![(0, 4), (huge, 10)]), 1000).is_some());
+    }
+
+    #[test]
+    fn segments_whose_lengths_overflow_together_are_out_of_bounds() {
+        // Each segment fits the file; listed twice, they no longer fit a u64.
+        let half = 1u64 << 63;
+        assert!(out_of_bounds(&raw(vec![(0, half), (0, half)]), half).is_some());
     }
 
     #[test]

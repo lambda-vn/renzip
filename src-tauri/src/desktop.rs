@@ -6,6 +6,9 @@
 //! offer the same thing, so each one gets its own path here and the caller
 //! is told which one was taken.
 
+// The only unsafe code of the application: two calls into the Windows shell.
+#![allow(unsafe_code)]
+
 use std::path::Path;
 
 /// What the desktop would do with a file, asked before anything is opened.

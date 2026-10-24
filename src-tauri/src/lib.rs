@@ -4,6 +4,8 @@
 //! open archives, moves long operations off the UI thread, and turns core
 //! types into something the frontend can read.
 
+#![deny(unsafe_code)]
+
 mod desktop;
 mod error;
 mod preview;

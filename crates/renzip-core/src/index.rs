@@ -138,23 +138,26 @@ fn decode_entry(path: String, tuples: Value, key: u64) -> Result<RawEntry> {
         return Err(corrupt(IndexProblem::NoTuple { entry: path }));
     }
 
-    if items.len() == 1 {
-        let fields = as_tuple_fields(&path, items.into_iter().next().unwrap())?;
-        if fields.len() != 2 && fields.len() != 3 {
-            return Err(corrupt(IndexProblem::FieldCount {
-                count: fields.len(),
-                entry: path,
-            }));
+    let items = match <[Value; 1]>::try_from(items) {
+        Ok([item]) => {
+            let fields = as_tuple_fields(&path, item)?;
+            if fields.len() != 2 && fields.len() != 3 {
+                return Err(corrupt(IndexProblem::FieldCount {
+                    count: fields.len(),
+                    entry: path,
+                }));
+            }
+            let offset = decode_int(&fields[0], &path)? ^ key;
+            let length = decode_int(&fields[1], &path)? ^ key;
+            let prefix = decode_prefix(&path, fields.get(2))?;
+            return Ok(RawEntry {
+                path,
+                segments: vec![(offset, length)],
+                prefix,
+            });
         }
-        let offset = decode_int(&fields[0], &path)? ^ key;
-        let length = decode_int(&fields[1], &path)? ^ key;
-        let prefix = decode_prefix(&path, fields.get(2))?;
-        return Ok(RawEntry {
-            path,
-            segments: vec![(offset, length)],
-            prefix,
-        });
-    }
+        Err(items) => items,
+    };
 
     // More than one tuple: Ren'Py concatenates the (offset, length) pair
     // each one names. It never expects a third field there, and unpacking
