@@ -37,8 +37,9 @@ Version anglaise : [README.md](README.md).
 - Extraction d'une sélection ou de la totalité, en conservant l'arborescence
   de l'archive ou à plat, avec une barre de progression honnête et un bouton
   d'annulation.
-- Création d'une archive à partir d'un dossier, avec relecture facultative
-  après écriture pour la comparer à ce qui a été empaqueté.
+- Création d'une archive à partir d'un dossier, en écartant les fichiers ou
+  sous-dossiers dont on ne veut pas, avec relecture facultative après écriture
+  pour la comparer à ce qui a été empaqueté.
 - Interface française et anglaise, choisie dans les paramètres, devinée depuis
   le bureau au premier lancement. Thèmes clair et sombre.
 - Utilisable entièrement au clavier, selon le motif ARIA « arbre » : les
@@ -59,19 +60,14 @@ l'aperçu d'une entrée au sein d'une archive de quatre gigaoctets.
 | RPA-3.2 | oui | non | Un champ d'en-tête supplémentaire avant la clé |
 | RPA-4.0 | oui | non | Même structure que la 3.0, seul le marqueur change |
 
-Ni la 3.2 ni la 4.0 ne sont proposées en écriture. La forme de leur en-tête
-n'est plus un mystère : celle de la 3.2 est offset, un champ supplémentaire
-inutilisé, puis la clé (confirmé par le développeur de Zeliria Sanctuary, le
-seul jeu connu à l'utiliser, et par Shizmob/rpatool#9) ; celle de la 4.0 est
-la même que celle de la 3.0 (Lattyware/unrpa#22) — cette bibliothèque pourrait
-donc en écrire. Mais aucun Ren'Py standard ne les lit : un jeu qui en ouvre
-une embarque un chargeur modifié, donc écrire une archive que le moteur
-lui-même ne peut pas lire serait pire que refuser, quoi que dise l'en-tête.
-L'écran des paramètres le dit, plutôt que de masquer l'option.
+Ni la 3.2 ni la 4.0 ne sont proposées en écriture, bien que leurs en-têtes
+soient assez bien compris pour les écrire. Aucun Ren'Py standard ne lit l'une
+ou l'autre : un jeu qui en ouvre une embarque un chargeur modifié, et écrire
+une archive que le moteur lui-même ne peut pas lire serait pire que refuser.
 
 Le format lui-même, la façon dont chaque version de Ren'Py le lit et l'écrit,
-et l'endroit où chacun de ces faits a été vérifié sont décrits, en anglais, dans
-[docs/rpa-format.md](docs/rpa-format.md).
+l'endroit où chacun de ces faits a été vérifié, et les sources des en-têtes 3.2
+et 4.0 sont décrits, en anglais, dans [docs/rpa-format.md](docs/rpa-format.md).
 
 Deux choses que le format ne contient tout simplement pas, et que la fenêtre
 n'affiche donc pas : une somme de contrôle et une date de modification. Ni une
@@ -211,8 +207,15 @@ comme hostile. En résumé :
   le chemin canonique juste avant écriture. Une entrée refusée est signalée et
   ignorée, jamais fatale au reste de l'extraction.
 - Les offsets et les longueurs sont validés contre la taille réelle du fichier
-  avant toute allocation. Rien ne charge une archive en entier.
+  avant toute allocation, et une entrée dont les segments totalisent plus
+  qu'une longueur de 64 bits ne peut contenir est refusée. Rien ne charge une
+  archive en entier, et une longueur annoncée par l'index ne sert jamais qu'à
+  suggérer, plafonnée, la taille d'un tampon.
 - La fenêtre ne dispose d'aucune commande prenant un chemin pour l'ouvrir.
+- `renzip-core` interdit le code `unsafe`. Le crate de l'application l'interdit
+  aussi, à l'exception de deux appels à l'interface Windows qui confient un
+  fichier au bureau.
+- `cargo audit` tourne en CI sur l'arbre des dépendances.
 
 La politique complète, et ce qui en est délibérément exclu, se trouve dans
 [SECURITY.md](SECURITY.md).

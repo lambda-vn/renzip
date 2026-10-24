@@ -34,8 +34,9 @@ Read this in French: [README_FR.md](README_FR.md).
 - Extract a selection or the whole archive, keeping the archive folders or
   flattening everything side by side, with an honest progress bar and a
   cancel button.
-- Build a new archive from a folder, optionally reopening it afterwards to
-  check it against what was packed.
+- Build a new archive from a folder, dropping any file or subfolder you do not
+  want in it, and optionally reopening the result to check it against what was
+  packed.
 - French and English interface, chosen in the settings, guessed from the
   desktop on first launch. Light and dark themes.
 - Keyboard-operable throughout, following the ARIA tree pattern: arrows walk
@@ -56,18 +57,14 @@ archive instant.
 | RPA-3.2 | yes | no | One extra header field before the key |
 | RPA-4.0 | yes | no | Same structure as 3.0, only the marker differs |
 
-Neither 3.2 nor 4.0 is offered as a write target. Their header shape is no
-longer a mystery - 3.2's is offset, an extra unused field, then the key
-(confirmed by the developer of Zeliria Sanctuary, the one known game shipping
-it, and by Shizmob/rpatool#9); 4.0's is the same as 3.0's (Lattyware/unrpa#22)
-- so this crate could write either. But no standard Ren'Py build reads them at
-all: a game that opens one embeds a modified loader, so writing an archive the
-engine itself cannot read would be a worse outcome than refusing, whatever the
-header says. The settings screen says so rather than hiding the option.
+Neither 3.2 nor 4.0 is offered as a write target, although their headers are
+understood well enough to write them. No standard Ren'Py build reads either: a
+game that opens one embeds a modified loader, and writing an archive the engine
+itself cannot read would be worse than refusing.
 
-The format itself, how each Ren'Py release reads and writes it, and where each
-of those facts was checked are written down in
-[docs/rpa-format.md](docs/rpa-format.md).
+The format itself, how each Ren'Py release reads and writes it, where each of
+those facts was checked, and the sources behind the 3.2 and 4.0 headers are
+written down in [docs/rpa-format.md](docs/rpa-format.md).
 
 Two things the format simply does not hold, and that the window therefore does
 not show: a checksum and a modification date. Nor a compressed size, since
@@ -202,8 +199,14 @@ hostile. The short version:
   path just before writing. A refused entry is reported and skipped, never
   fatal to the rest of the extraction.
 - Offsets and lengths are validated against the real file size before
-  anything is allocated. Nothing loads an archive whole.
+  anything is allocated, and an entry whose segments add up past what a
+  64-bit length can hold is refused. Nothing loads an archive whole, and a
+  length the index announces is only ever a capped hint for a buffer.
 - The window has no command that takes a path and opens it.
+- `renzip-core` forbids `unsafe` code. The application crate denies it too,
+  except for the two calls into the Windows shell that hand a file to the
+  desktop.
+- `cargo audit` runs in CI against the dependency tree.
 
 The full policy, and what is deliberately outside it, is in
 [SECURITY.md](SECURITY.md).
