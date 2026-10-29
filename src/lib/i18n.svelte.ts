@@ -334,6 +334,10 @@ const MESSAGES = {
     en: "cannot seek in {path}: {error}",
   },
   "reason.io.store": { fr: "impossible de stocker {path} : {error}", en: "cannot store {path}: {error}" },
+  "reason.larger_than_archive": {
+    fr: "déclare des blocs totalisant {length} octets dans une archive de {size} octets",
+    en: "declares segments adding up to {length} bytes in a {size} byte archive",
+  },
   "path.empty": { fr: "chemin vide", en: "empty path" },
   "path.absolute": { fr: "chemin absolu", en: "absolute path" },
   "path.drive_letter": { fr: "lettre de lecteur", en: "drive letter" },
@@ -437,6 +441,14 @@ const MESSAGES = {
   },
   "index.pickle": { fr: "encodage impossible ({error})", en: "cannot pickle it ({error})" },
   "index.deflate": { fr: "compression impossible ({error})", en: "cannot deflate it ({error})" },
+  "index.too_deep": {
+    fr: "il imbrique des conteneurs sur plus de {limit} niveaux",
+    en: "it nests containers more than {limit} levels deep",
+  },
+  "index.shared_container": {
+    fr: "il partage un conteneur entre plusieurs endroits",
+    en: "it shares a container between several places",
+  },
 
   "count.entry.one": { fr: "{n} entrée", en: "{n} entry" },
   "count.entry.other": { fr: "{n} entrées", en: "{n} entries" },

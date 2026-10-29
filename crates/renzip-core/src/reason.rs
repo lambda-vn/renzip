@@ -133,6 +133,14 @@ pub enum Reason {
         /// The operating system's own message.
         error: String,
     },
+    /// The segments of a multi-segment entry add up to more bytes than the
+    /// whole archive holds.
+    LargerThanArchive {
+        /// Bytes the segments add up to.
+        length: u64,
+        /// Size of the archive, in bytes.
+        size: u64,
+    },
 }
 
 impl Reason {
@@ -216,6 +224,10 @@ impl std::fmt::Display for Reason {
                 IoAction::Seek => write!(f, "cannot seek in {path}: {error}"),
                 IoAction::Store => write!(f, "cannot store {path}: {error}"),
             },
+            Reason::LargerThanArchive { length, size } => write!(
+                f,
+                "declares segments adding up to {length} bytes in a {size} byte archive"
+            ),
         }
     }
 }

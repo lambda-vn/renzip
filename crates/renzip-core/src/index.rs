@@ -77,6 +77,10 @@ pub fn decode(compressed: impl Read, key: u64) -> Result<Vec<RawEntry>> {
         }));
     }
 
+    // The inflated size bounds the stream, not what serde-pickle builds out
+    // of it: that is bounded here, before anything is built.
+    crate::pickle_scan::check(&raw).map_err(corrupt)?;
+
     // Globals are replaced by None instead of aborting the parse, because a
     // legitimate index contains one: Python pickles an empty bytes object at
     // protocol 2 as __builtin__.bytes(), which serde-pickle does not model

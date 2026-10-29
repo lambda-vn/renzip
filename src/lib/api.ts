@@ -43,7 +43,8 @@ export type Reason =
   | { code: "duplicate_path" | "already_written"; path: string }
   | { code: "outside_destination"; root: string }
   | { code: "archive_ends_early"; written: number; announced: number }
-  | { code: "io"; action: IoAction; path: string; error: string };
+  | { code: "io"; action: IoAction; path: string; error: string }
+  | { code: "larger_than_archive"; length: number; size: number };
 
 /** An entry the archive announced but that will not be extracted. */
 export type Rejection = {
@@ -59,7 +60,9 @@ export type IndexProblem =
   | { kind: "key_not_a_string"; key: string }
   | { kind: "not_a_list" | "no_tuple" | "not_a_tuple"; entry: string }
   | { kind: "field_count"; entry: string; count: number }
-  | { kind: "prefix_not_bytes" | "not_a_positive_integer"; entry: string; value: string };
+  | { kind: "prefix_not_bytes" | "not_a_positive_integer"; entry: string; value: string }
+  | { kind: "too_deep"; limit: number }
+  | { kind: "shared_container" };
 
 /** Where an archive ends before what it announces, mirroring `Truncation`. */
 export type Truncation =

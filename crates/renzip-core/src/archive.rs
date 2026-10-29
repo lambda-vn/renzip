@@ -304,7 +304,9 @@ impl Archive {
             cancelled: false,
         };
         let total = indices.len();
-        let bytes_total: u64 = indices.iter().map(|&i| self.entries[i].length).sum();
+        let bytes_total = indices.iter().fold(0, |total, &i| {
+            u64::saturating_add(total, self.entries[i].length)
+        });
 
         // Split the borrow so that reading through the file handle and looking
         // at the entry list can happen in the same loop.
@@ -486,8 +488,11 @@ fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<Reason> {
 
     // Several segments, concatenated with no prefix: each is checked against
     // the archive on its own, the way Ren'Py reads each one on its own.
-    // The same range may be listed any number of times, so the entry's total
-    // length can exceed the file and must itself fit in a `u64`.
+    // The same range may be listed any number of times, which Ren'Py would
+    // read, but no archiver writes: the segments of a real entry are distinct
+    // ranges of the file, so their total never exceeds it. Refusing more
+    // keeps a small archive from announcing petabytes for extraction to
+    // write to disk.
     let mut total: u64 = 0;
     for &(offset, length) in &raw.segments {
         let Some(end) = offset.checked_add(length) else {
@@ -504,6 +509,12 @@ fn out_of_bounds(raw: &RawEntry, file_size: u64) -> Option<Reason> {
             return Some(Reason::SegmentOverflow { offset, length });
         };
         total = sum;
+    }
+    if total > file_size {
+        return Some(Reason::LargerThanArchive {
+            length: total,
+            size: file_size,
+        });
     }
     None
 }
@@ -642,6 +653,18 @@ mod tests {
         // Each segment fits the file; listed twice, they no longer fit a u64.
         let half = 1u64 << 63;
         assert!(out_of_bounds(&raw(vec![(0, half), (0, half)]), half).is_some());
+    }
+
+    #[test]
+    fn segments_adding_up_to_more_than_the_file_are_out_of_bounds() {
+        // Each segment fits the file; repeated, they announce more than it holds.
+        assert_eq!(
+            out_of_bounds(&raw(vec![(0, 10), (0, 10)]), 15),
+            Some(Reason::LargerThanArchive {
+                length: 20,
+                size: 15
+            })
+        );
     }
 
     #[test]

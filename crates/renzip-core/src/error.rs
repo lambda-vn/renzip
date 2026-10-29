@@ -177,6 +177,16 @@ pub enum IndexProblem {
         /// The compressor's own message.
         error: String,
     },
+    /// The pickle nests containers deeper than any index does.
+    #[error("index nests containers more than {limit} levels deep")]
+    TooDeep {
+        /// The deepest nesting accepted.
+        limit: u32,
+    },
+    /// The pickle fetches a container back from its memo, which no index
+    /// does and which would copy that container out once per fetch.
+    #[error("index shares a container between several places")]
+    SharedContainer,
 }
 
 /// Where an archive ends before what it announces.

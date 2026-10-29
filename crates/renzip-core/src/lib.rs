@@ -38,6 +38,8 @@ pub mod index;
 pub mod path;
 pub mod reason;
 
+mod pickle_scan;
+
 pub use archive::{Archive, Entry, ExtractionReport, Layout, Progress, Rejection, Selection};
 pub use builder::{build, scan, BuildReport, ScanReport, SourceFile, DEFAULT_KEY};
 pub use error::{Error, IndexProblem, Result, Truncation};
