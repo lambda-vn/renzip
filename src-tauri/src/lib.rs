@@ -199,23 +199,23 @@ async fn preview_entry(
     handle: u32,
     path: String,
 ) -> Result<Preview, CommandError> {
-    let session = state.session(handle)?;
-    let size = session
-        .entries
-        .iter()
-        .find(|entry| entry.path == path)
-        .map(|entry| entry.length)
-        .ok_or_else(|| renzip_core::Error::EntryNotFound {
-            entry: path.clone(),
-        })?;
-
-    if let Some(refusal) = preview::too_big(&path, size) {
-        return Ok(refusal);
-    }
-
-    let archive_path = session.path.clone();
+    let archive_path = state.session(handle)?.path.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let mut archive = Archive::open(&archive_path).map_err(CommandError::from)?;
+        // Sized from the archive just reopened, the one read below: the list
+        // kept since the archive was opened may describe a file replaced on
+        // disk since, and the limit would then hold for the wrong entry.
+        let size = archive
+            .entries()
+            .iter()
+            .find(|entry| entry.path == path)
+            .map(|entry| entry.length)
+            .ok_or_else(|| renzip_core::Error::EntryNotFound {
+                entry: path.clone(),
+            })?;
+        if let Some(refusal) = preview::too_big(&path, size) {
+            return Ok(refusal);
+        }
         let bytes = archive.read_entry(&path).map_err(CommandError::from)?;
         Ok(preview::of(&path, bytes))
     })
@@ -276,7 +276,17 @@ async fn open_entry(
             });
         }
 
-        let name = path.rsplit('/').next().unwrap_or(&path);
+        // The core names a flat copy after the last component of the
+        // sanitized path, where a backslash separates too: name it the same
+        // way, or "images\bg.png" is looked for where "bg.png" was written.
+        // The extraction above already skipped any path sanitize refuses.
+        let name = renzip_core::path::sanitize(&path)
+            .ok()
+            .and_then(|relative| relative.file_name().map(PathBuf::from))
+            .ok_or_else(|| CommandError::EntrySkipped {
+                entry: path.clone(),
+                reason: renzip_core::Reason::NoFileName,
+            })?;
         let written = entry_dir.join(name);
         let location = written.display().to_string();
 
@@ -332,8 +342,11 @@ async fn extract(
 ) -> Result<renzip_core::ExtractionReport, CommandError> {
     let session = state.session(handle)?;
     let archive_path = session.path.clone();
-    let cancel = session.cancel.clone();
-    cancel.store(false, Ordering::Relaxed);
+    let cancel = session.cancel.start();
+    // Closing the archive between the lookup above and start() stopped the
+    // previous flag, not this one: looking again makes that case fail here
+    // instead of extracting from an archive the window has let go of.
+    state.session(handle)?;
 
     tauri::async_runtime::spawn_blocking(move || {
         let mut archive = Archive::open(&archive_path).map_err(CommandError::from)?;
@@ -356,7 +369,7 @@ async fn extract(
 /// Ask the extraction running on this handle to stop.
 #[tauri::command]
 fn cancel_extraction(state: State<'_, AppState>, handle: u32) -> Result<(), CommandError> {
-    state.session(handle)?.cancel.store(true, Ordering::Relaxed);
+    state.session(handle)?.cancel.cancel();
     Ok(())
 }
 
@@ -379,8 +392,7 @@ async fn build_archive(
             })
         }
     };
-    let cancel = state.build_cancel.clone();
-    cancel.store(false, Ordering::Relaxed);
+    let cancel = state.build_cancel.start();
 
     tauri::async_runtime::spawn_blocking(move || {
         let mut emitter = ProgressEmitter::new(app, "build", 0);
@@ -404,7 +416,7 @@ async fn build_archive(
 /// Ask the running build to stop.
 #[tauri::command]
 fn cancel_build(state: State<'_, AppState>) {
-    state.build_cancel.store(true, Ordering::Relaxed);
+    state.build_cancel.cancel();
 }
 
 /// Sends progress events to the window, no faster than the window can read.

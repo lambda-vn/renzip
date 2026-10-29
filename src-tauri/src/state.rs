@@ -8,7 +8,7 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use renzip_core::{Archive, Entry};
 
@@ -20,8 +20,8 @@ pub struct Session {
     pub path: PathBuf,
     /// Entry list, as decoded when it was opened.
     pub entries: Arc<Vec<Entry>>,
-    /// Set to true to stop the extraction running on this archive.
-    pub cancel: Arc<AtomicBool>,
+    /// Stops the extraction running on this archive.
+    pub cancel: CancelSlot,
     /// Scratch directory the row menu writes copies into, one per archive.
     pub scratch: PathBuf,
 }
@@ -32,7 +32,7 @@ impl Session {
         Session {
             path,
             entries: Arc::new(archive.entries().to_vec()),
-            cancel: Arc::new(AtomicBool::new(false)),
+            cancel: CancelSlot::default(),
             scratch: scratch_dir(),
         }
     }
@@ -68,8 +68,8 @@ fn scratch_dir() -> PathBuf {
 pub struct AppState {
     sessions: Mutex<HashMap<u32, Arc<Session>>>,
     next_handle: AtomicU32,
-    /// Set to true to stop the running build.
-    pub build_cancel: Arc<AtomicBool>,
+    /// Stops the running build.
+    pub build_cancel: CancelSlot,
 }
 
 impl AppState {
@@ -96,8 +96,12 @@ impl AppState {
     /// Drop a session, cancelling anything still running on it and taking its
     /// scratch copies with it.
     pub fn remove(&self, handle: u32) {
-        if let Some(session) = self.lock().remove(&handle) {
-            session.cancel.store(true, Ordering::Relaxed);
+        // Out of the registry first, and the lock released: deleting the
+        // scratch directory can take a while, and every other command waits
+        // on that lock meanwhile.
+        let removed = self.lock().remove(&handle);
+        if let Some(session) = removed {
+            session.cancel.cancel();
             session.discard_scratch();
         }
     }
@@ -107,8 +111,9 @@ impl AppState {
     /// Closing the window is the other way an archive stops being open, and
     /// the copies the row menu made have no reason to outlive it.
     pub fn close_all(&self) {
-        for (_, session) in self.lock().drain() {
-            session.cancel.store(true, Ordering::Relaxed);
+        let sessions = std::mem::take(&mut *self.lock());
+        for session in sessions.into_values() {
+            session.cancel.cancel();
             session.discard_scratch();
         }
     }
@@ -118,16 +123,44 @@ impl AppState {
     /// A poisoned lock here only means some earlier command panicked while
     /// holding it; the map itself is still a valid map, so refusing every
     /// later command over that is worse than carrying on with it.
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<u32, Arc<Session>>> {
-        self.sessions
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    fn lock(&self) -> MutexGuard<'_, HashMap<u32, Arc<Session>>> {
+        self.sessions.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// The stop flag of the latest operation of one kind.
+///
+/// Every operation gets a flag of its own. Resetting one shared flag when an
+/// operation starts would wipe a stop already asked for, including the one
+/// closing the archive sets a moment before.
+#[derive(Default)]
+pub struct CancelSlot(Mutex<Arc<AtomicBool>>);
+
+impl CancelSlot {
+    /// Give a new operation its flag, which [`CancelSlot::cancel`] sets from
+    /// now on.
+    pub fn start(&self) -> Arc<AtomicBool> {
+        let flag = Arc::new(AtomicBool::new(false));
+        *self.lock() = Arc::clone(&flag);
+        flag
+    }
+
+    /// Stop the latest operation.
+    pub fn cancel(&self) {
+        self.lock().store(true, Ordering::Relaxed);
+    }
+
+    /// Lock the slot, recovering it the same way as [`AppState::lock`].
+    fn lock(&self) -> MutexGuard<'_, Arc<AtomicBool>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::scratch_dir;
+    use std::sync::atomic::Ordering;
+
+    use super::{scratch_dir, CancelSlot};
 
     #[test]
     fn two_archives_never_share_a_scratch_directory() {
@@ -141,5 +174,21 @@ mod tests {
         assert!(first
             .parent()
             .is_some_and(|parent| parent.ends_with("renzip")));
+    }
+
+    #[test]
+    fn a_stop_reaches_the_latest_operation_and_never_the_next() {
+        let slot = CancelSlot::default();
+        let first = slot.start();
+        slot.cancel();
+        assert!(first.load(Ordering::Relaxed));
+
+        let second = slot.start();
+        assert!(
+            !second.load(Ordering::Relaxed),
+            "a stop asked for the previous operation must not cancel this one"
+        );
+        slot.cancel();
+        assert!(second.load(Ordering::Relaxed));
     }
 }
