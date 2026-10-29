@@ -258,7 +258,9 @@
       });
       return;
     }
-    if (held && key === "a" && !isTextEntry(event.target)) {
+    // Only where the archive's entries are on screen: elsewhere it would tick
+    // every entry of a list the user cannot see.
+    if (held && key === "a" && app.view === "browse" && !isTextEntry(event.target)) {
       event.preventDefault();
       app.selectAll();
     }

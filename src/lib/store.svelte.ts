@@ -61,6 +61,12 @@ class AppStore {
   preview = $state<Preview | null>(null);
   /** True while that entry is being read. */
   previewLoading = $state(false);
+  /**
+   * Counts show() calls, so that a preview arriving after a newer one was
+   * asked for is dropped: holding an arrow key asks for one per row, and the
+   * answers do not come back in order.
+   */
+  #previewTicket = 0;
 
   /** Progress of the running extraction or build. */
   progress = $state<ProgressPayload | null>(null);
@@ -353,18 +359,27 @@ class AppStore {
    * @param force - Read it even when automatic preview is off.
    */
   async show(entry: EntryRow, force = false): Promise<void> {
+    const ticket = ++this.#previewTicket;
     this.current = entry;
     this.preview = null;
     if (!this.archive || (!this.settings.autoPreview && !force)) {
+      this.previewLoading = false;
       return;
     }
     this.previewLoading = true;
     try {
-      this.preview = await previewEntry(this.archive.handle, entry.path);
+      const preview = await previewEntry(this.archive.handle, entry.path);
+      if (ticket === this.#previewTicket) {
+        this.preview = preview;
+      }
     } catch (error) {
-      this.status = { tone: "warn", text: describeError(error) };
+      if (ticket === this.#previewTicket) {
+        this.status = { tone: "warn", text: describeError(error) };
+      }
     } finally {
-      this.previewLoading = false;
+      if (ticket === this.#previewTicket) {
+        this.previewLoading = false;
+      }
     }
   }
 
@@ -476,16 +491,21 @@ class AppStore {
         // where they wanted to end up anyway.
         const before = { entries: report.entries, bytes: report.bytes };
         await this.load(this.destPath);
+        // load() lists what the reopened archive rejected; what this screen
+        // reports is what the build itself left out.
+        this.skipped = report.skipped;
         const summary = this.archive;
+        if (summary === null) {
+          // load() has already said why the archive did not open.
+          return;
+        }
         const ok =
-          summary !== null &&
-          summary.entry_count === before.entries &&
-          summary.total_size === before.bytes;
+          summary.entry_count === before.entries && summary.total_size === before.bytes;
         text += ok
           ? t("status.verified")
           : t("status.verifyFailed", {
               reason: t("status.verifyMismatch", {
-                found: tn("count.entry", summary?.entry_count ?? 0),
+                found: tn("count.entry", summary.entry_count),
                 expected: tn("count.packed", before.entries),
               }),
             });

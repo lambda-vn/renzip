@@ -25,6 +25,14 @@
 
   let rows = $derived(app.stagedRows);
 
+  // Excluding or folding can shrink the list under the active row; pull it
+  // back inside, or the next key acts on a row that no longer exists.
+  $effect(() => {
+    if (active >= rows.length) {
+      active = Math.max(0, rows.length - 1);
+    }
+  });
+
   /**
    * Act on a click on a row: unfold or fold a folder.
    *

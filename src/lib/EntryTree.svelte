@@ -38,6 +38,14 @@
 
   let rows = $derived(app.rows);
 
+  // A filter or a fold can shrink the list under the active row; pull it
+  // back inside, or the next key acts on a row that no longer exists.
+  $effect(() => {
+    if (active >= rows.length) {
+      active = Math.max(0, rows.length - 1);
+    }
+  });
+
   /**
    * State of the tick box of a row.
    *
