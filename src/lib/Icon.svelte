@@ -52,8 +52,6 @@
 
   /** Name of one of the icons above. */
   export type IconName = keyof typeof PATHS;
-
-  export { PATHS };
 </script>
 
 <script lang="ts">

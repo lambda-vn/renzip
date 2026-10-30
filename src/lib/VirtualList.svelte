@@ -4,8 +4,8 @@
    *
    * Only the rows in view are in the DOM, which is what keeps an archive of
    * fifty thousand entries scrollable. The scroll container carries the
-   * listbox or tree role, so the rows rendered by the caller must carry the
-   * matching item role (RGAA 7.1).
+   * tree role, so the rows rendered by the caller must carry the treeitem
+   * role (RGAA 7.1).
    */
   import type { Snippet } from "svelte";
 
@@ -16,8 +16,6 @@
     rowHeight?: number;
     /** Accessible name of the list. */
     ariaLabel: string;
-    /** Role of the scroll container, which sets the role its rows must use. */
-    role?: "listbox" | "tree";
     /** Id of the row that has virtual focus. */
     activeDescendant?: string;
     /** Row renderer, called with the item and its absolute index. */
@@ -35,7 +33,6 @@
     items,
     rowHeight = 28,
     ariaLabel,
-    role = "listbox",
     activeDescendant,
     row,
     onkeydown,
@@ -98,26 +95,19 @@
       viewport.scrollTop = bottom - viewport.clientHeight;
     }
   }
-
-  /** Give the list keyboard focus. */
-  export function focus(): void {
-    viewport?.focus();
-  }
 </script>
 
 <!--
-  Both roles this container can take, listbox and tree, are interactive and
-  own the keyboard for their rows, so the container is the tab stop. The
-  linter only sees a dynamic role attribute and cannot tell.
+  The tree owns the keyboard for its rows, which only have virtual focus
+  through aria-activedescendant, so the container is the tab stop.
 -->
-<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
 <div
   bind:this={viewport}
   bind:clientHeight={viewportHeight}
   onscroll={(event) => (scrollTop = event.currentTarget.scrollTop)}
   {onkeydown}
   {oncontextmenu}
-  {role}
+  role="tree"
   aria-label={ariaLabel}
   aria-activedescendant={activeDescendant}
   tabindex="0"

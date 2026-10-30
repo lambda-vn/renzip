@@ -130,7 +130,6 @@
   bind:this={list}
   items={rows}
   rowHeight={ROW_HEIGHT}
-  role="tree"
   ariaLabel={t("create.staged")}
   activeDescendant={rows.length > 0 ? `staged-row-${active}` : undefined}
   {onkeydown}

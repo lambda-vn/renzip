@@ -274,7 +274,6 @@
   bind:this={list}
   items={rows}
   rowHeight={ROW_HEIGHT}
-  role="tree"
   ariaLabel={t("browse.tree")}
   activeDescendant={rows.length > 0 ? `row-${active}` : undefined}
   {onkeydown}
