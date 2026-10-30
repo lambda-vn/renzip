@@ -190,13 +190,14 @@
   }
 
   /**
-   * Open the row menu where the pointer is.
+   * Open the row menu.
    *
-   * @param event - The right click.
-   * @param index - Row it landed on.
+   * @param index - Row it is for.
+   * @param x - Where to place it, in window coordinates: the pointer for a
+   *   right click, under the row for the keyboard.
+   * @param y - Same, vertically.
    */
-  async function openMenu(event: MouseEvent, index: number): Promise<void> {
-    event.preventDefault();
+  async function openMenu(index: number, x: number, y: number): Promise<void> {
     active = index;
     const row = rows[index];
     const items: MenuItem[] = [
@@ -229,7 +230,7 @@
         });
       }
     }
-    menu = { x: event.clientX, y: event.clientY, label: t("menu.label", { name: row.name }), items };
+    menu = { x, y, label: t("menu.label", { name: row.name }), items };
   }
 
   /**
@@ -294,26 +295,36 @@
   ariaLabel={t("browse.tree")}
   activeDescendant={rows.length > 0 ? `row-${active}` : undefined}
   {onkeydown}
+  onmenukey={(x, y) => void openMenu(active, x, y)}
 >
   {#snippet row(item: TreeRow, index: number)}
     <!--
       The keyboard lives on the tree itself, which is the ARIA pattern for
       aria-activedescendant: rows are never focused, so a key handler here
       would never fire.
+
+      A row's tick is aria-checked, not aria-selected: a folder ticked in part
+      is "mixed", which aria-selected cannot say, and the APG tree view
+      pattern asks for one of the two in a tree, never both. The linter
+      follows ARIA 1.2's table, which lists aria-selected as required on
+      treeitem through inheritance.
     -->
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_role_has_required_aria_props -->
     <div
       id={`row-${index}`}
       role="treeitem"
       tabindex="-1"
       aria-level={item.depth + 1}
-      aria-selected={ticked(item) === "on"}
+      aria-checked={ticked(item) === "on" ? "true" : ticked(item) === "part" ? "mixed" : "false"}
       aria-expanded={item.kind === "dir" ? item.open : undefined}
       aria-label={label(item)}
       class="row rounded-none px-4.5 {index === active ? 'row-active' : ''}"
       style="height:{ROW_HEIGHT}px;padding-left:{18 + item.depth * 16}px"
       onclick={() => activate(index)}
-      oncontextmenu={(event) => void openMenu(event, index)}
+      oncontextmenu={(event) => {
+        event.preventDefault();
+        void openMenu(index, event.clientX, event.clientY);
+      }}
     >
       <!--
         Hit areas, not controls: space ticks the row and the arrows unfold it,

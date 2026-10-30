@@ -103,18 +103,19 @@
   }
 
   /**
-   * Open the row menu where the pointer is.
+   * Open the row menu.
    *
-   * @param event - The right click.
-   * @param index - Row it landed on.
+   * @param index - Row it is for.
+   * @param x - Where to place it, in window coordinates: the pointer for a
+   *   right click, under the row for the keyboard.
+   * @param y - Same, vertically.
    */
-  function openMenu(event: MouseEvent, index: number): void {
-    event.preventDefault();
+  function openMenu(index: number, x: number, y: number): void {
     active = index;
     const row = rows[index];
     menu = {
-      x: event.clientX,
-      y: event.clientY,
+      x,
+      y,
       label: t("menu.label", { name: row.name }),
       items: [
         {
@@ -143,6 +144,7 @@
   ariaLabel={t("create.staged")}
   activeDescendant={rows.length > 0 ? `staged-row-${active}` : undefined}
   {onkeydown}
+  onmenukey={(x, y) => openMenu(active, x, y)}
 >
   {#snippet row(item: SourceRow, index: number)}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -157,7 +159,10 @@
       class="row rounded-none px-4.5 {index === active ? 'row-active' : ''}"
       style="height:{ROW_HEIGHT}px;padding-left:{18 + item.depth * 16}px"
       onclick={() => activate(index)}
-      oncontextmenu={(event) => openMenu(event, index)}
+      oncontextmenu={(event) => {
+        event.preventDefault();
+        openMenu(index, event.clientX, event.clientY);
+      }}
     >
       {#if item.kind === "dir"}
         <button

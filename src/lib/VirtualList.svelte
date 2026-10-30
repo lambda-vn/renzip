@@ -24,6 +24,11 @@
     row: Snippet<[T, number]>;
     /** Keyboard handling, owned by the caller since selection lives there. */
     onkeydown?: (event: KeyboardEvent) => void;
+    /**
+     * The menu key or Shift+F10 asked for the active row's menu, to be
+     * placed at `x`, `y` in window coordinates.
+     */
+    onmenukey?: (x: number, y: number) => void;
   };
 
   let {
@@ -34,7 +39,31 @@
     activeDescendant,
     row,
     onkeydown,
+    onmenukey,
   }: Props = $props();
+
+  /**
+   * Turn a contextmenu event the keyboard raised into a menu for the active
+   * row.
+   *
+   * The menu key and Shift+F10 fire on the element holding the focus, which
+   * is this container and never a row: rows only have virtual focus. A
+   * right click lands on a row first, whose own handler marks the event as
+   * handled, and is left alone here.
+   *
+   * @param event - The contextmenu event, bubbled or not.
+   */
+  function oncontextmenu(event: MouseEvent): void {
+    if (event.defaultPrevented || !onmenukey || !activeDescendant) {
+      return;
+    }
+    const box = document.getElementById(activeDescendant)?.getBoundingClientRect();
+    if (!box) {
+      return;
+    }
+    event.preventDefault();
+    onmenukey(box.left + 24, box.bottom);
+  }
 
   /** Rows kept on each side of the viewport, to hide the recycling. */
   const OVERSCAN = 8;
@@ -87,8 +116,8 @@
   bind:clientHeight={viewportHeight}
   onscroll={(event) => (scrollTop = event.currentTarget.scrollTop)}
   {onkeydown}
+  {oncontextmenu}
   {role}
-  aria-multiselectable="true"
   aria-label={ariaLabel}
   aria-activedescendant={activeDescendant}
   tabindex="0"

@@ -42,6 +42,8 @@
   let menu = $state<HTMLDivElement>();
   let active = $state(0);
   let size = $state({ width: 0, height: 0 });
+  /** What held the keyboard before the menu took it, to hand it back. */
+  let opener: HTMLElement | null = null;
 
   // Placed from the pointer, pulled back inside the window once the menu has
   // been measured. The first frame is drawn at the pointer, which is where it
@@ -58,8 +60,21 @@
     }
     const box = element.getBoundingClientRect();
     size = { width: box.width, height: box.height };
+    opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     element.focus();
   });
+
+  /**
+   * Close and give the keyboard back to where it was, which is the tree the
+   * menu was opened from: left on the removed menu, focus would fall to the
+   * page and a keyboard user would have to tab all the way back (RGAA 7.1).
+   * A click elsewhere closes through onclose alone, focus going where the
+   * click went.
+   */
+  function close(): void {
+    onclose();
+    opener?.focus();
+  }
 
   /**
    * Run one line and close.
@@ -67,7 +82,7 @@
    * @param item - Line that was chosen.
    */
   function run(item: MenuItem): void {
-    onclose();
+    close();
     item.action();
   }
 
@@ -79,7 +94,7 @@
   function onkeydown(event: KeyboardEvent): void {
     switch (event.key) {
       case "Escape":
-        onclose();
+        close();
         break;
       case "ArrowDown":
         active = (active + 1) % items.length;
