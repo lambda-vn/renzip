@@ -266,6 +266,10 @@ const MESSAGES = {
     fr: "Détail des entrées non traitées ({count})",
     en: "Untouched entries in detail ({count})",
   },
+  "status.busy": {
+    fr: "Une opération est en cours : attendez qu'elle finisse ou interrompez-la.",
+    en: "An operation is running: wait for it to finish or stop it.",
+  },
 
   "reason.unreadable_segments": {
     fr: "l'index décrit cette entrée en plusieurs blocs dont au moins un n'est pas une simple paire (offset, longueur) ; Ren'Py ne peut pas la lire non plus",

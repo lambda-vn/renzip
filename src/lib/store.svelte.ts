@@ -199,12 +199,24 @@ class AppStore {
    * @param path - Full path of the .rpa file.
    */
   async load(path: string): Promise<void> {
+    // Ctrl+O and a drop reach here too, not only the disabled button:
+    // replacing the archive mid-operation would close the one being read.
+    if (this.busy) {
+      this.status = { tone: "warn", text: t("status.busy") };
+      return;
+    }
     try {
       if (this.archive) {
         await closeArchive(this.archive.handle);
       }
       const summary = await openArchive(path);
-      this.entries = await listEntries(summary.handle);
+      try {
+        this.entries = await listEntries(summary.handle);
+      } catch (error) {
+        // Opened but not listed: nothing will ever close it otherwise.
+        await closeArchive(summary.handle).catch(() => undefined);
+        throw error;
+      }
       this.archive = summary;
       this.view = "browse";
       this.filter = "";
@@ -421,6 +433,11 @@ class AppStore {
    * @param dir - Directory to pack.
    */
   async stage(dir: string): Promise<void> {
+    // A drop reaches here during a build too, whose excludes this resets.
+    if (this.busy) {
+      this.status = { tone: "warn", text: t("status.busy") };
+      return;
+    }
     try {
       const report = await scanDirectory(dir);
       this.source = { dir, report };
@@ -524,10 +541,14 @@ class AppStore {
 
   /** Ask whatever is running to stop. */
   async cancel(): Promise<void> {
-    if (this.progress?.phase === "build") {
-      await cancelBuild();
-    } else if (this.archive) {
-      await cancelExtraction(this.archive.handle);
+    try {
+      if (this.progress?.phase === "build") {
+        await cancelBuild();
+      } else if (this.archive) {
+        await cancelExtraction(this.archive.handle);
+      }
+    } catch (error) {
+      this.status = { tone: "warn", text: describeError(error) };
     }
   }
 

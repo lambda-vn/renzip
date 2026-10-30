@@ -14,7 +14,7 @@
   import Icon from "./lib/Icon.svelte";
   import TitleBar from "./lib/TitleBar.svelte";
   import { launchPath, onProgress } from "./lib/api";
-  import { describeReason, formatSize } from "./lib/format";
+  import { describeError, describeReason, formatSize } from "./lib/format";
   import { t, tn } from "./lib/i18n.svelte";
   import { app } from "./lib/store.svelte";
   import BrowseView from "./lib/views/BrowseView.svelte";
@@ -135,13 +135,17 @@
 
   /** Ask for an archive and open it. */
   async function chooseArchive(): Promise<void> {
-    const chosen = await open({
-      multiple: false,
-      title: t("dialog.openArchive"),
-      filters: [{ name: "Ren'Py .rpa", extensions: ["rpa"] }],
-    });
-    if (typeof chosen === "string") {
-      await app.load(chosen);
+    try {
+      const chosen = await open({
+        multiple: false,
+        title: t("dialog.openArchive"),
+        filters: [{ name: "Ren'Py .rpa", extensions: ["rpa"] }],
+      });
+      if (typeof chosen === "string") {
+        await app.load(chosen);
+      }
+    } catch (error) {
+      app.status = { tone: "warn", text: describeError(error) };
     }
   }
 
