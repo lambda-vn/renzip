@@ -212,7 +212,18 @@ fn decode_prefix(path: &str, field: Option<&Value>) -> Result<Vec<u8>> {
         // A prefix pickled by Python 2 arrives as a byte string too, but one
         // pickled from a unicode object arrives as a String; Ren'Py writes it
         // back out as latin-1, so that is how it is turned into bytes here.
-        Some(Value::String(s)) => Ok(s.chars().map(|c| c as u8).collect()),
+        // A character past U+00FF has no latin-1 byte: Ren'Py fails to
+        // encode it, so it is refused rather than truncated to another one.
+        Some(Value::String(s)) => s
+            .chars()
+            .map(u8::try_from)
+            .collect::<std::result::Result<Vec<u8>, _>>()
+            .map_err(|_| {
+                corrupt(IndexProblem::PrefixNotBytes {
+                    entry: path.to_string(),
+                    value: format!("{s:?}"),
+                })
+            }),
         Some(other) => Err(corrupt(IndexProblem::PrefixNotBytes {
             entry: path.to_string(),
             value: format!("{other:?}"),
@@ -367,6 +378,20 @@ mod tests {
             segments: segments.to_vec(),
             prefix: prefix.to_vec(),
         }
+    }
+
+    #[test]
+    fn a_string_prefix_is_read_as_latin_1_and_nothing_wider() {
+        let latin = Value::String("\u{e9}".into());
+        assert_eq!(decode_prefix("a", Some(&latin)).unwrap(), vec![0xe9]);
+        // U+0141 used to come out as 0x41, a byte the archive never held.
+        let wider = Value::String("\u{141}".into());
+        assert!(matches!(
+            decode_prefix("a", Some(&wider)),
+            Err(Error::CorruptIndex {
+                problem: IndexProblem::PrefixNotBytes { .. }
+            })
+        ));
     }
 
     #[test]

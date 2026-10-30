@@ -25,7 +25,7 @@ use crate::reason::{IoAction, Reason};
 /// It is rpatool's default, not Ren'Py's own archiver's - that one always
 /// uses `0x42424242` - kept here as this crate's own default rather than
 /// changed to match, since nothing reads either value as meaningful.
-pub const DEFAULT_KEY: u64 = 0xDEAD_BEEF;
+pub const DEFAULT_KEY: u32 = 0xDEAD_BEEF;
 
 /// One file found under a source directory.
 #[derive(Debug, Clone, Serialize)]
@@ -112,7 +112,7 @@ pub fn build(
     source_dir: &Path,
     dest_path: &Path,
     version: Version,
-    key: u64,
+    key: u32,
     excludes: &[String],
     on_progress: &mut dyn FnMut(&Progress<'_>) -> bool,
 ) -> Result<BuildReport> {
@@ -191,15 +191,25 @@ fn write_temp_archive(
     source_dir: &Path,
     files: Vec<SourceFile>,
     version: Version,
-    key: u64,
+    key: u32,
     placeholder: &str,
     mut report: BuildReport,
     on_progress: &mut dyn FnMut(&Progress<'_>) -> bool,
 ) -> Result<BuildReport> {
+    // A leftover from a build that crashed is removed first, and the file is
+    // then created only if nothing took its place: opening an existing path
+    // would follow a symbolic link planted under this predictable name and
+    // overwrite whatever it points to. remove_file deletes a link itself,
+    // never its target.
+    match std::fs::remove_file(temp_path) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => {
+            return Err(Error::io(temp_path, e));
+        }
+        _ => {}
+    }
     let mut out = OpenOptions::new()
         .write(true)
-        .create(true)
-        .truncate(true)
+        .create_new(true)
         .open(temp_path)
         .map_err(|e| Error::io(temp_path, e))?;
     out.write_all(placeholder.as_bytes())
@@ -251,7 +261,7 @@ fn write_temp_archive(
     }
 
     let index_offset = offset;
-    let encoded = index::encode(&entries, key)?;
+    let encoded = index::encode(&entries, u64::from(key))?;
     out.write_all(&encoded)
         .map_err(|e| Error::io(temp_path, e))?;
 
@@ -279,8 +289,15 @@ fn temp_path_for(dest_path: &Path) -> PathBuf {
 /// destination or temporary file still be compared against the canonical
 /// paths a directory scan produces. `None` when the parent cannot be
 /// resolved, in which case nothing is excluded on `path`'s account.
+///
+/// A bare file name has an empty parent, which is the current directory:
+/// left empty, it would not resolve, and a build of "." into "out.dat"
+/// would pack the previous out.dat into the new one.
 fn canonical_prospective(path: &Path) -> Option<PathBuf> {
-    let parent = path.parent().filter(|p| !p.as_os_str().is_empty())?;
+    let parent = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
     let canonical_parent = parent.canonicalize().ok()?;
     let file_name = path.file_name()?;
     Some(canonical_parent.join(file_name))
@@ -397,4 +414,16 @@ fn store_file(
     out.seek(SeekFrom::Start(offset))
         .map_err(|e| Reason::io(IoAction::Seek, archive.display(), e))?;
     std::io::copy(&mut input, out).map_err(|e| Reason::io(IoAction::Store, path.display(), e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_bare_file_name_resolves_in_the_current_directory() {
+        let resolved = canonical_prospective(Path::new("out.dat"));
+        let expected = Path::new(".").canonicalize().unwrap().join("out.dat");
+        assert_eq!(resolved, Some(expected));
+    }
 }

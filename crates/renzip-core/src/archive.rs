@@ -558,7 +558,7 @@ fn write_entry(
     if layout == Layout::Flat {
         relative = PathBuf::from(relative.file_name().ok_or(Reason::NoFileName)?);
     }
-    if !taken.insert(relative.clone()) {
+    if !taken.insert(collision_key(&relative)) {
         return Err(Reason::AlreadyWritten {
             path: relative.display().to_string(),
         });
@@ -627,9 +627,30 @@ fn write_entry(
     Ok(written)
 }
 
+/// What two destination paths must differ by to be two files.
+///
+/// The default file systems of Windows (NTFS) and macOS (APFS) ignore case:
+/// there "A.txt" and "a.txt" are one file, and the second entry would
+/// overwrite the first instead of being reported. Everywhere else case
+/// tells files apart, and folding it would skip a file for nothing.
+fn collision_key(relative: &Path) -> PathBuf {
+    if cfg!(any(windows, target_os = "macos")) {
+        PathBuf::from(relative.to_string_lossy().to_lowercase())
+    } else {
+        relative.to_path_buf()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn paths_differing_only_by_case_collide_where_case_is_ignored() {
+        let upper = collision_key(Path::new("Images/A.txt"));
+        let lower = collision_key(Path::new("images/a.txt"));
+        assert_eq!(upper == lower, cfg!(any(windows, target_os = "macos")));
+    }
 
     fn raw(segments: Vec<(u64, u64)>) -> RawEntry {
         RawEntry {

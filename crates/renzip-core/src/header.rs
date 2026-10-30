@@ -112,8 +112,10 @@ pub fn parse_line(line: &str) -> Result<Header> {
 ///
 /// The width of both fields is fixed, which is what lets the builder write a
 /// placeholder first and overwrite it with the real offset once the index has
-/// been placed.
-pub fn format_line(version: Version, index_offset: u64, key: u64) -> Result<String> {
+/// been placed. The key is a `u32` for the same reason and for the engine's:
+/// `{:08x}` only sets a minimum width, and Ren'Py reads exactly eight hex
+/// digits, so a wider key would be read as another one.
+pub fn format_line(version: Version, index_offset: u64, key: u32) -> Result<String> {
     match version {
         Version::Rpa2_0 => Ok(format!("RPA-2.0 {index_offset:016x}\n")),
         Version::Rpa3_0 => Ok(format!("RPA-3.0 {index_offset:016x} {key:08x}\n")),
