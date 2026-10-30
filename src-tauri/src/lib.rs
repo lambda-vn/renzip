@@ -290,13 +290,21 @@ async fn open_entry(
         let written = entry_dir.join(name);
         let location = written.display().to_string();
 
+        // Archives come off the internet, and so does what they hold: the
+        // copy is handed to the desktop only once Windows will warn before
+        // running it as it would for the download, and only if it is not a
+        // script elsewhere. Otherwise it is shown in its folder, never run.
+        let guarded =
+            desktop::mark_downloaded(&written).is_ok() && !desktop::runs_when_opened(&written);
+
         // What the desktop intends to do decides both whether handing the
         // file over is worth trying, and what to call the result: an
         // association pointing at an uninstalled program is skipped rather
         // than followed into nothing, and one that resolves to the system's
         // own picker is reported as a picker and not as an application.
         let association = desktop::association_of(&written);
-        if !chooser
+        if guarded
+            && !chooser
             && association != desktop::Association::Dead
             && app
                 .opener()
@@ -312,7 +320,7 @@ async fn open_entry(
                 },
             });
         }
-        if desktop::choose_application(&written) == desktop::Fallback::Chooser {
+        if guarded && desktop::choose_application(&written) == desktop::Fallback::Chooser {
             return Ok(OpenOutcome {
                 path: location,
                 action: OpenAction::Chooser,

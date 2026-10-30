@@ -138,6 +138,9 @@ pub enum Fallback {
 pub fn choose_application(path: &Path) -> Fallback {
     use std::os::windows::ffi::OsStrExt;
 
+    use windows_sys::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, COINIT_DISABLE_OLE1DDE,
+    };
     use windows_sys::Win32::UI::Shell::ShellExecuteW;
     use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
 
@@ -147,6 +150,22 @@ pub fn choose_application(path: &Path) -> Fallback {
         .encode_wide()
         .chain(std::iter::once(0))
         .collect();
+
+    // ShellExecuteW can hand the verb to shell extensions, which are COM
+    // objects: Microsoft's documentation asks for COM to be initialized on
+    // the calling thread first, and this one is a blocking-pool thread that
+    // never did. A thread already initialized in another mode answers
+    // RPC_E_CHANGED_MODE, a failure, and must then not be uninitialized.
+    //
+    // SAFETY: the reserved pointer must be null; every successful
+    // CoInitializeEx is paired with exactly one CoUninitialize on the same
+    // thread, below.
+    let com = unsafe {
+        CoInitializeEx(
+            std::ptr::null(),
+            (COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE) as u32,
+        )
+    };
 
     // SAFETY: both strings are null terminated and live until the call
     // returns, and the four remaining arguments are the documented "no owner
@@ -162,6 +181,11 @@ pub fn choose_application(path: &Path) -> Fallback {
             SW_SHOWNORMAL,
         )
     };
+
+    if com >= 0 {
+        // SAFETY: pairs the successful CoInitializeEx above, same thread.
+        unsafe { CoUninitialize() };
+    }
 
     // Documented convention of ShellExecuteW: anything above 32 is success,
     // anything below is an error code dressed up as a handle.
@@ -191,9 +215,12 @@ pub fn choose_application(path: &Path) -> Fallback {
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn();
-        // Spawned, not waited on: the dialog stays up until the user is done
-        // with it, and this thread has an interface waiting on it.
-        if spawned.is_ok() {
+        // Not waited on here: the dialog stays up until the user is done
+        // with it, and this thread has an interface waiting on it. A thread
+        // of its own waits instead, or the exited child stays a zombie
+        // until the application quits.
+        if let Ok(mut child) = spawned {
+            std::thread::spawn(move || child.wait());
             return Fallback::Chooser;
         }
     }
@@ -207,6 +234,60 @@ pub fn choose_application(path: &Path) -> Fallback {
 #[cfg(target_os = "macos")]
 pub fn choose_application(_path: &Path) -> Fallback {
     Fallback::None
+}
+
+/// Mark `path` as downloaded from the internet, the way a browser marks what
+/// it saves.
+///
+/// A copy extracted from an archive carries no trace of where the archive
+/// came from, so Windows would run a .exe or a .bat out of it without the
+/// warning the download itself would have raised. The Zone.Identifier
+/// stream, zone 3 (internet), is what SmartScreen, the shell's security
+/// prompt and Office's protected view read before opening a file.
+///
+/// # Errors
+///
+/// The file system refused the stream, as FAT does: the caller must then
+/// not open the file.
+#[cfg(windows)]
+pub fn mark_downloaded(path: &Path) -> std::io::Result<()> {
+    let mut stream = path.as_os_str().to_os_string();
+    stream.push(":Zone.Identifier");
+    std::fs::write(stream, "[ZoneTransfer]\r\nZoneId=3\r\n")
+}
+
+/// Mark `path` as downloaded: nothing to write outside Windows, where
+/// [`runs_when_opened`] keeps scripts from being opened instead.
+///
+/// # Errors
+///
+/// Never.
+#[cfg(not(windows))]
+pub fn mark_downloaded(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+/// Whether opening `path` would run it rather than show it, on a desktop
+/// that has no mark like Windows' to warn before running a downloaded file.
+///
+/// Linux and macOS hand a script or a launcher to the program associated
+/// with it, which may well be its interpreter, a .jar to Java or a .desktop
+/// to the session. Wine, once installed, claims the Windows types too: its
+/// executables, shortcuts, scripts, control panel modules and registry
+/// files all run under it. Such a file is revealed in its folder instead,
+/// where the user decides. Windows answers false: the mark is its warning.
+pub fn runs_when_opened(path: &Path) -> bool {
+    const RUNNABLE: &[&str] = &[
+        "app", "appimage", "bash", "bat", "bin", "cmd", "com", "command", "cpl", "csh", "deb",
+        "desktop", "dmg", "exe", "fish", "hta", "jar", "js", "ksh", "lnk", "lua", "msi", "php",
+        "pif", "pkg", "pl", "ps1", "py", "pyw", "rb", "reg", "rpm", "run", "scr", "sh", "tool",
+        "vbe", "vbs", "wsf", "zsh",
+    ];
+    !cfg!(windows)
+        && path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| RUNNABLE.contains(&extension.to_ascii_lowercase().as_str()))
 }
 
 #[cfg(all(test, windows))]
@@ -235,5 +316,26 @@ mod tests {
         // A packaged application has no executable to name, and answering
         // Dead there would send every .png to the picker.
         assert_eq!(classify(None), Association::Unknown);
+    }
+}
+
+#[cfg(test)]
+mod script_tests {
+    use std::path::Path;
+
+    use super::runs_when_opened;
+
+    #[test]
+    fn scripts_are_kept_from_running_outside_windows() {
+        // Windows warns through the mark instead, so it never answers true.
+        assert_eq!(runs_when_opened(Path::new("game/Patch.SH")), !cfg!(windows));
+        assert_eq!(runs_when_opened(Path::new("mods/tool.jar")), !cfg!(windows));
+        // Run by Wine where it is installed.
+        assert_eq!(
+            runs_when_opened(Path::new("game/Setup.scr")),
+            !cfg!(windows)
+        );
+        assert!(!runs_when_opened(Path::new("images/bg.png")));
+        assert!(!runs_when_opened(Path::new("README")));
     }
 }
