@@ -19,7 +19,7 @@ pub struct Session {
     /// Path the archive was opened from.
     pub path: PathBuf,
     /// Entry list, as decoded when it was opened.
-    pub entries: Arc<Vec<Entry>>,
+    pub entries: Vec<Entry>,
     /// Stops the extraction running on this archive.
     pub cancel: CancelSlot,
     /// Scratch directory the row menu writes copies into, one per archive.
@@ -31,7 +31,7 @@ impl Session {
     pub fn new(path: PathBuf, archive: Archive) -> Self {
         Session {
             path,
-            entries: Arc::new(archive.entries().to_vec()),
+            entries: archive.into_entries(),
             cancel: CancelSlot::default(),
             scratch: scratch_dir(),
         }

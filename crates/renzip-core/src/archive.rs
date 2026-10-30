@@ -211,6 +211,12 @@ impl Archive {
         &self.rejected
     }
 
+    /// Give up the archive and keep its usable entries, sorted by path,
+    /// without copying them.
+    pub fn into_entries(self) -> Vec<Entry> {
+        self.entries
+    }
+
     /// Total extracted size of every usable entry.
     pub fn total_size(&self) -> u64 {
         self.entries
@@ -391,7 +397,7 @@ fn read_header(file: &mut File, path: &Path) -> Result<Header> {
 fn validate(raw_entries: Vec<RawEntry>, file_size: u64) -> (Vec<Entry>, Vec<Rejection>) {
     let mut entries = Vec::with_capacity(raw_entries.len());
     let mut rejected = Vec::new();
-    let mut seen: HashMap<String, ()> = HashMap::with_capacity(raw_entries.len());
+    let mut seen: HashSet<String> = HashSet::with_capacity(raw_entries.len());
 
     for raw in raw_entries {
         if raw.segments.is_empty() {
@@ -417,7 +423,7 @@ fn validate(raw_entries: Vec<RawEntry>, file_size: u64) -> (Vec<Entry>, Vec<Reje
         }
 
         let normalized = raw.path.replace('\\', "/");
-        if seen.insert(normalized.clone(), ()).is_some() {
+        if !seen.insert(normalized.clone()) {
             rejected.push(Rejection {
                 path: raw.path,
                 reason: Reason::DuplicatePath { path: normalized },
