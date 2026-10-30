@@ -10,11 +10,12 @@
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import Icon from "./Icon.svelte";
   import VirtualList from "./VirtualList.svelte";
+  import type { SourceFile } from "./api";
   import { formatSize } from "./format";
   import { t, tn } from "./i18n.svelte";
   import { glyphOf, typeLabel } from "./kinds";
-  import type { SourceRow } from "./sourceTree";
   import { app } from "./store.svelte";
+  import { navigate, type TreeRow } from "./tree";
 
   /** Height of one row, shared with the virtual list. */
   const ROW_HEIGHT = 28;
@@ -47,7 +48,7 @@
   }
 
   /**
-   * Walk and unfold with the keyboard.
+   * Walk, unfold and exclude with the keyboard.
    *
    * @param event - Key event from the tree.
    */
@@ -55,50 +56,39 @@
     if (rows.length === 0) {
       return;
     }
-    const row = rows[active];
-    let next: number | null = null;
-
-    switch (event.key) {
-      case "ArrowDown":
-        next = Math.min(rows.length - 1, active + 1);
-        break;
-      case "ArrowUp":
-        next = Math.max(0, active - 1);
-        break;
-      case "Home":
-        next = 0;
-        break;
-      case "End":
-        next = rows.length - 1;
-        break;
-      case "ArrowRight":
-        if (row.kind === "dir" && !row.open && row.hasKids) {
-          app.toggleStagedFolder(row.key);
-        } else if (row.kind === "dir" && row.open) {
-          next = Math.min(rows.length - 1, active + 1);
-        }
-        break;
-      case "ArrowLeft":
-        if (row.kind === "dir" && row.open) {
-          app.toggleStagedFolder(row.key);
-        }
-        break;
-      case "Enter":
-        if (row.kind === "dir") {
-          app.toggleStagedFolder(row.key);
-        }
-        break;
-      case "Delete":
-        app.excludeFromSource(row.key);
-        break;
-      default:
-        return;
+    const next = navigate(event.key, rows, active, (key) => app.toggleStagedFolder(key));
+    if (next === undefined) {
+      if (act(event, rows[active])) {
+        event.preventDefault();
+      }
+      return;
     }
-
     event.preventDefault();
     if (next !== null) {
       active = next;
       list?.scrollToIndex(next);
+    }
+  }
+
+  /**
+   * Run what a key does to the active row besides moving through the tree.
+   *
+   * @param event - Key event from the tree.
+   * @param row - The active row.
+   * @returns Whether the key meant anything here.
+   */
+  function act(event: KeyboardEvent, row: TreeRow<SourceFile>): boolean {
+    switch (event.key) {
+      case "Enter":
+        if (row.kind === "dir") {
+          app.toggleStagedFolder(row.key);
+        }
+        return true;
+      case "Delete":
+        app.excludeFromSource(row.key);
+        return true;
+      default:
+        return false;
     }
   }
 
@@ -128,11 +118,11 @@
   }
 
   /** Text a screen reader hears for one row. */
-  function label(row: SourceRow): string {
+  function label(row: TreeRow<SourceFile>): string {
     if (row.kind === "dir") {
       return `${t("browse.folderAria", { name: row.name })}, ${tn("count.file", row.count)}, ${formatSize(row.size)}`;
     }
-    return `${row.name}, ${typeLabel(row.key)}, ${formatSize(row.size)}`;
+    return `${row.name}, ${typeLabel(row.key)}, ${formatSize(row.entry.size)}`;
   }
 </script>
 
@@ -146,7 +136,7 @@
   {onkeydown}
   onmenukey={(x, y) => openMenu(active, x, y)}
 >
-  {#snippet row(item: SourceRow, index: number)}
+  {#snippet row(item: TreeRow<SourceFile>, index: number)}
     <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
       id={`staged-row-${index}`}
@@ -187,7 +177,7 @@
         <Icon name={glyphOf(item.key).icon} size={15} stroke={1.7} style="flex:none;opacity:.75" />
         <span class="flex-1 truncate" title={item.key}>{item.name}</span>
         <span class="text-muted w-24">{typeLabel(item.key)}</span>
-        <span class="nums w-24 text-right">{formatSize(item.size)}</span>
+        <span class="nums w-24 text-right">{formatSize(item.entry.size)}</span>
       {/if}
     </div>
   {/snippet}

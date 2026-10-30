@@ -20,6 +20,7 @@ import {
   previewEntry,
   scanDirectory,
   type ArchiveSummary,
+  type BuildReport,
   type EntryRow,
   type Layout,
   type Preview,
@@ -31,7 +32,6 @@ import { describeError, formatSize } from "./format";
 import { setLanguage, t, tn } from "./i18n.svelte";
 import { kindKey, kindOf } from "./kinds";
 import { applyTheme, loadSettings, saveSettings, type Settings } from "./settings";
-import { buildSourceTree, visibleSourceRows } from "./sourceTree";
 import { buildTree, descendants, parentOf, visibleRows, type TreeRow } from "./tree";
 
 /** Which screen is showing. */
@@ -113,9 +113,9 @@ class AppStore {
     (this.source?.report.files ?? []).filter((file) => !this.isExcluded(file.path)),
   );
   /** Folder tree of what is still staged. */
-  stagedTree = $derived(buildSourceTree(this.stagedFiles));
+  stagedTree = $derived(buildTree(this.stagedFiles));
   /** Rows of the staged content list: folders to unfold, and files. */
-  stagedRows = $derived(visibleSourceRows(this.stagedTree, this.stagedOpen));
+  stagedRows = $derived(visibleRows(this.stagedTree, this.stagedOpen));
 
   /** Apply the stored preferences as soon as the window has a document. */
   init(): void {
@@ -216,17 +216,8 @@ class AppStore {
    */
   async #open(path: string): Promise<void> {
     try {
-      if (this.archive) {
-        await closeArchive(this.archive.handle);
-      }
-      const summary = await openArchive(path);
-      try {
-        this.entries = await listEntries(summary.handle);
-      } catch (error) {
-        // Opened but not listed: nothing will ever close it otherwise.
-        await closeArchive(summary.handle).catch(() => undefined);
-        throw error;
-      }
+      const { summary, entries } = await this.#reopen(path);
+      this.entries = entries;
       this.archive = summary;
       this.view = "browse";
       this.filter = "";
@@ -235,10 +226,7 @@ class AppStore {
       this.current = null;
       this.preview = null;
       this.skipped = summary.rejected;
-      this.status =
-        summary.rejected.length > 0
-          ? { tone: "warn", text: tn("count.rejected", summary.rejected.length) }
-          : { tone: "info", text: t("status.archiveOpened", { name: summary.name }) };
+      this.status = openedStatus(summary, t("status.archiveOpened", { name: summary.name }));
     } catch (error) {
       this.archive = null;
       this.entries = [];
@@ -263,9 +251,7 @@ class AppStore {
     const path = this.archive.path;
     const currentPath = this.current?.path;
     try {
-      await closeArchive(this.archive.handle);
-      const summary = await openArchive(path);
-      const entries = await listEntries(summary.handle);
+      const { summary, entries } = await this.#reopen(path);
       const byPath = new Map(entries.map((entry) => [entry.path, entry]));
 
       for (const selected of [...this.selected]) {
@@ -277,10 +263,7 @@ class AppStore {
       this.archive = summary;
       this.entries = entries;
       this.skipped = summary.rejected;
-      this.status =
-        summary.rejected.length > 0
-          ? { tone: "warn", text: tn("count.rejected", summary.rejected.length) }
-          : { tone: "info", text: t("status.refreshed") };
+      this.status = openedStatus(summary, t("status.refreshed"));
 
       const stillThere = currentPath ? byPath.get(currentPath) : undefined;
       if (stillThere) {
@@ -297,6 +280,26 @@ class AppStore {
       this.selected.clear();
       this.skipped = [];
       this.status = { tone: "warn", text: describeError(error) };
+    }
+  }
+
+  /**
+   * Close the open archive, if any, and open `path` in its place.
+   *
+   * @param path - Full path of the .rpa file.
+   * @returns The archive and its entries.
+   */
+  async #reopen(path: string): Promise<{ summary: ArchiveSummary; entries: EntryRow[] }> {
+    if (this.archive) {
+      await closeArchive(this.archive.handle);
+    }
+    const summary = await openArchive(path);
+    try {
+      return { summary, entries: await listEntries(summary.handle) };
+    } catch (error) {
+      // Opened but not listed: nothing will ever close it otherwise.
+      await closeArchive(summary.handle).catch(() => undefined);
+      throw error;
     }
   }
 
@@ -504,49 +507,57 @@ class AppStore {
         return;
       }
 
-      let text = t("status.built", {
+      const text = t("status.built", {
         path: this.destPath,
         count: tn("count.packed", report.entries),
         size: formatSize(report.bytes),
         version: this.version,
       });
 
-      if (this.settings.verifyAfterBuild) {
-        // Verification is a real read of what was just written: the archive is
-        // reopened, its index decoded, and what it announces compared to what
-        // was packed. Opening it also puts it in front of the user, which is
-        // where they wanted to end up anyway.
-        const before = { entries: report.entries, bytes: report.bytes };
-        await this.#open(this.destPath);
-        // load() lists what the reopened archive rejected; what this screen
-        // reports is what the build itself left out.
-        this.skipped = report.skipped;
-        const summary = this.archive;
-        if (summary === null) {
-          // load() has already said why the archive did not open.
-          return;
-        }
-        const ok =
-          summary.entry_count === before.entries && summary.total_size === before.bytes;
-        text += ok
-          ? t("status.verified")
-          : t("status.verifyFailed", {
-              reason: t("status.verifyMismatch", {
-                found: tn("count.entry", summary.entry_count),
-                expected: tn("count.packed", before.entries),
-              }),
-            });
-        this.status = { tone: ok ? "info" : "warn", text };
-        return;
-      }
-
-      this.status = { tone: "info", text };
+      this.status = this.settings.verifyAfterBuild
+        ? await this.#verifyBuilt(report, text)
+        : { tone: "info", text };
     } catch (error) {
       this.status = { tone: "warn", text: describeError(error) };
     } finally {
       this.busy = false;
       this.progress = null;
     }
+  }
+
+  /**
+   * Reopen the archive a build just wrote and compare what it announces with
+   * what was packed.
+   *
+   * A real read of what was written: its index is decoded again. Opening it
+   * also puts it in front of the user, which is where they wanted to end up
+   * anyway.
+   *
+   * @param report - What the build says it packed.
+   * @param built - The status sentence the build earned so far.
+   * @returns The status to show: the build's sentence with the verdict, or
+   *   why the archive did not open.
+   */
+  async #verifyBuilt(report: BuildReport, built: string): Promise<Status> {
+    await this.#open(this.destPath);
+    // #open() lists what the reopened archive rejected; what this screen
+    // reports is what the build itself left out.
+    this.skipped = report.skipped;
+    const summary = this.archive;
+    if (summary === null) {
+      // #open() has already said why the archive did not open.
+      return this.status ?? { tone: "warn", text: built };
+    }
+    const ok = summary.entry_count === report.entries && summary.total_size === report.bytes;
+    const verdict = ok
+      ? t("status.verified")
+      : t("status.verifyFailed", {
+          reason: t("status.verifyMismatch", {
+            found: tn("count.entry", summary.entry_count),
+            expected: tn("count.packed", report.entries),
+          }),
+        });
+    return { tone: ok ? "info" : "warn", text: built + verdict };
   }
 
   /** Ask whatever is running to stop. */
@@ -609,3 +620,16 @@ async function warnAboutSkippedArchives(skipped: Rejection[]): Promise<void> {
 
 /** The store, shared by every view. */
 export const app = new AppStore();
+
+/**
+ * Status to show once an archive was opened or reopened: what it refused,
+ * or `text` when it refused nothing.
+ *
+ * @param summary - The archive just opened.
+ * @param text - What to say when every entry was kept.
+ */
+function openedStatus(summary: ArchiveSummary, text: string): Status {
+  return summary.rejected.length > 0
+    ? { tone: "warn", text: tn("count.rejected", summary.rejected.length) }
+    : { tone: "info", text };
+}

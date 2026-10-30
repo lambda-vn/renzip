@@ -1,28 +1,33 @@
 /**
- * Virtual folder tree over the flat entry list of an archive.
+ * Virtual folder tree over a flat list of paths.
  *
  * An .rpa has no directories, only paths with slashes in them. The tree is
  * built once per archive, in one pass, because rebuilding it on every folder
  * change would be felt on the fifty thousand entry archives this application
- * is meant to survive.
+ * is meant to survive. The files a build would pack are shown the same way,
+ * so the tree takes anything with a path and a size: an archive's entries,
+ * or a staged directory's files.
  */
 
 import type { EntryRow } from "./api";
 
+/** What a tree is built from: a slash separated path and a size. */
+type Leaf = { path: string; size: number };
+
 /** Content of one virtual folder. */
-type Folder = {
+type Folder<T extends Leaf> = {
   dirs: Set<string>;
-  files: EntryRow[];
+  files: T[];
   /** Recursive totals, for the size shown on a folder row. */
   size: number;
   count: number;
 };
 
-/** Every folder of an archive, keyed by path ("" is the root). */
-export type Tree = Map<string, Folder>;
+/** Every folder, keyed by path ("" is the root). */
+export type Tree<T extends Leaf = EntryRow> = Map<string, Folder<T>>;
 
 /** One row of the single list: a folder to unfold, or a file. */
-export type TreeRow =
+export type TreeRow<T extends Leaf = EntryRow> =
   | {
       kind: "dir";
       /** Folder path, which is also the row identity. */
@@ -42,19 +47,19 @@ export type TreeRow =
     }
   | {
       kind: "file";
-      /** Entry path, which is also the row identity. */
+      /** File path, which is also the row identity. */
       key: string;
       /** Name as displayed: the file name, or the whole path when filtering. */
       name: string;
       /** Nesting level, 0 at the root. */
       depth: number;
-      /** The entry itself. */
-      entry: EntryRow;
+      /** The entry or file itself. */
+      entry: T;
     };
 
-/** Build the folder tree of an entry list. */
-export function buildTree(entries: EntryRow[]): Tree {
-  const tree: Tree = new Map();
+/** Build the folder tree of an entry or file list. */
+export function buildTree<T extends Leaf>(entries: T[]): Tree<T> {
+  const tree: Tree<T> = new Map();
   folderOf(tree, "");
 
   for (const entry of entries) {
@@ -97,18 +102,18 @@ export function buildTree(entries: EntryRow[]): Tree {
  * with their full path, because unfolding a tree to reveal three matches
  * buried at four levels helps nobody.
  *
- * @param tree - Tree of the open archive.
+ * @param tree - Tree of the open archive or the staged directory.
  * @param open - Paths of the folders currently unfolded.
  * @param keep - Optional test a file must pass; null lists everything.
  */
-export function visibleRows(
-  tree: Tree,
+export function visibleRows<T extends Leaf>(
+  tree: Tree<T>,
   open: Set<string>,
-  keep: ((entry: EntryRow) => boolean) | null = null,
+  keep: ((entry: T) => boolean) | null = null,
   filtering = false,
-): TreeRow[] {
+): TreeRow<T>[] {
   if (filtering) {
-    const matches: TreeRow[] = [];
+    const matches: TreeRow<T>[] = [];
     for (const folder of tree.values()) {
       for (const entry of folder.files) {
         if (!keep || keep(entry)) {
@@ -119,7 +124,7 @@ export function visibleRows(
     return matches.sort((a, b) => a.key.localeCompare(b.key));
   }
 
-  const rows: TreeRow[] = [];
+  const rows: TreeRow<T>[] = [];
   const walk = (path: string, depth: number): void => {
     const folder = tree.get(path);
     if (!folder) {
@@ -160,7 +165,7 @@ export function visibleRows(
 }
 
 /** Every file below a folder, that folder's own files included. */
-export function descendants(tree: Tree, path: string): EntryRow[] {
+export function descendants<T extends Leaf>(tree: Tree<T>, path: string): T[] {
   const folder = tree.get(path);
   if (!folder) {
     return [];
@@ -184,11 +189,68 @@ export function baseName(path: string): string {
 }
 
 /** Get a folder, creating it the first time it is named. */
-function folderOf(tree: Tree, path: string): Folder {
+function folderOf<T extends Leaf>(tree: Tree<T>, path: string): Folder<T> {
   let folder = tree.get(path);
   if (!folder) {
     folder = { dirs: new Set(), files: [], size: 0, count: 0 };
     tree.set(path, folder);
   }
   return folder;
+}
+
+/** Rows a page key moves by: about one screen of the list. */
+const PAGE = 12;
+
+/**
+ * Apply a navigation key of the tree view pattern to a list of rows.
+ *
+ * The arrows walk, Home and End jump to either end, the page keys move by
+ * a screen; Right unfolds a closed folder or steps into an open one, Left
+ * folds an open one. What a key does beyond moving (ticking, opening,
+ * excluding) belongs to each tree, which handles it when this answers
+ * undefined.
+ *
+ * @param key - The key, as KeyboardEvent.key names it.
+ * @param rows - Rows on screen.
+ * @param active - Index of the active row.
+ * @param toggle - Folds or unfolds the folder with this key.
+ * @returns The row to make active, null when the key only folded or
+ *   unfolded, undefined when it is not a navigation key.
+ */
+export function navigate<T extends Leaf>(
+  key: string,
+  rows: TreeRow<T>[],
+  active: number,
+  toggle: (key: string) => void,
+): number | null | undefined {
+  const row = rows[active];
+  const last = rows.length - 1;
+  switch (key) {
+    case "ArrowDown":
+      return Math.min(last, active + 1);
+    case "ArrowUp":
+      return Math.max(0, active - 1);
+    case "Home":
+      return 0;
+    case "End":
+      return last;
+    case "PageDown":
+      return Math.min(last, active + PAGE);
+    case "PageUp":
+      return Math.max(0, active - PAGE);
+    case "ArrowRight":
+      if (row.kind === "dir" && !row.open && row.hasKids) {
+        toggle(row.key);
+      } else if (row.kind === "dir" && row.open) {
+        return Math.min(last, active + 1);
+      }
+      return null;
+    case "ArrowLeft":
+      if (row.kind === "dir" && row.open) {
+        toggle(row.key);
+      }
+      return null;
+    default:
+      return undefined;
+  }
 }

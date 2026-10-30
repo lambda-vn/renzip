@@ -20,7 +20,7 @@
   import { t, tn } from "./i18n.svelte";
   import { glyphOf, typeLabel } from "./kinds";
   import { app } from "./store.svelte";
-  import { descendants, type TreeRow } from "./tree";
+  import { descendants, navigate, type TreeRow } from "./tree";
 
   type Props = {
     /** Extract these entries, asking for a destination if none is set. */
@@ -88,60 +88,13 @@
     if (rows.length === 0) {
       return;
     }
-    const row = rows[active];
-    let next: number | null = null;
-
-    switch (event.key) {
-      case "ArrowDown":
-        next = Math.min(rows.length - 1, active + 1);
-        break;
-      case "ArrowUp":
-        next = Math.max(0, active - 1);
-        break;
-      case "Home":
-        next = 0;
-        break;
-      case "End":
-        next = rows.length - 1;
-        break;
-      case "PageDown":
-        next = Math.min(rows.length - 1, active + 12);
-        break;
-      case "PageUp":
-        next = Math.max(0, active - 12);
-        break;
-      case "ArrowRight":
-        if (row.kind === "dir" && !row.open && row.hasKids) {
-          app.toggleFolder(row.key);
-        } else if (row.kind === "dir" && row.open) {
-          next = Math.min(rows.length - 1, active + 1);
-        }
-        break;
-      case "ArrowLeft":
-        if (row.kind === "dir" && row.open) {
-          app.toggleFolder(row.key);
-        }
-        break;
-      case " ":
-        app.toggleRow(row);
-        break;
-      case "Enter":
-        if (row.kind === "file") {
-          void app.show(row.entry, true);
-        } else {
-          app.toggleFolder(row.key);
-        }
-        break;
-      case "a":
-        if (event.ctrlKey || event.metaKey) {
-          app.selectAll();
-          break;
-        }
-        return;
-      default:
-        return;
+    const next = navigate(event.key, rows, active, (key) => app.toggleFolder(key));
+    if (next === undefined) {
+      if (act(event, rows[active])) {
+        event.preventDefault();
+      }
+      return;
     }
-
     event.preventDefault();
     if (next !== null) {
       active = next;
@@ -150,6 +103,36 @@
       if (target.kind === "file") {
         void app.show(target.entry);
       }
+    }
+  }
+
+  /**
+   * Run what a key does to the active row besides moving through the tree.
+   *
+   * @param event - Key event from the tree.
+   * @param row - The active row.
+   * @returns Whether the key meant anything here.
+   */
+  function act(event: KeyboardEvent, row: TreeRow): boolean {
+    switch (event.key) {
+      case " ":
+        app.toggleRow(row);
+        return true;
+      case "Enter":
+        if (row.kind === "file") {
+          void app.show(row.entry, true);
+        } else {
+          app.toggleFolder(row.key);
+        }
+        return true;
+      case "a":
+        if (event.ctrlKey || event.metaKey) {
+          app.selectAll();
+          return true;
+        }
+        return false;
+      default:
+        return false;
     }
   }
 
