@@ -18,7 +18,7 @@ export type Language = (typeof LANGUAGES)[number];
 
 /** Every string the window shows. */
 const MESSAGES = {
-  "lang.fr": { fr: "Francais", en: "French" },
+  "lang.fr": { fr: "Français", en: "French" },
   "lang.en": { fr: "Anglais", en: "English" },
 
   "title.back": { fr: "Retour", en: "Back" },
