@@ -205,6 +205,16 @@ class AppStore {
       this.status = { tone: "warn", text: t("status.busy") };
       return;
     }
+    await this.#open(path);
+  }
+
+  /**
+   * load() without its guard, for the build's own verification, which runs
+   * while the build still counts as busy.
+   *
+   * @param path - Full path of the .rpa file.
+   */
+  async #open(path: string): Promise<void> {
     try {
       if (this.archive) {
         await closeArchive(this.archive.handle);
@@ -507,7 +517,7 @@ class AppStore {
         // was packed. Opening it also puts it in front of the user, which is
         // where they wanted to end up anyway.
         const before = { entries: report.entries, bytes: report.bytes };
-        await this.load(this.destPath);
+        await this.#open(this.destPath);
         // load() lists what the reopened archive rejected; what this screen
         // reports is what the build itself left out.
         this.skipped = report.skipped;
