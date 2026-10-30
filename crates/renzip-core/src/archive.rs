@@ -241,15 +241,7 @@ impl Archive {
             .min(READ_CAPACITY_HINT);
         let mut buffer = Vec::with_capacity(hint);
         buffer.extend_from_slice(&entry.prefix);
-        for (i, &(offset, length)) in entry.segments.iter().enumerate() {
-            // The first segment's declared length still includes the prefix
-            // when there is one (only ever true for a single-segment entry);
-            // every later segment is read in full.
-            let read_len = if i == 0 {
-                length - entry.prefix.len() as u64
-            } else {
-                length
-            };
+        for (offset, read_len) in stored_ranges(&entry) {
             self.file
                 .seek(SeekFrom::Start(offset))
                 .map_err(|e| Error::io(&self.path, e))?;
@@ -600,15 +592,7 @@ fn write_entry(
     out.write_all(&entry.prefix)
         .map_err(|e| Reason::io(IoAction::Write, target.display(), e))?;
     let mut copied = 0u64;
-    for (i, &(offset, length)) in entry.segments.iter().enumerate() {
-        // The first segment's declared length still includes the prefix
-        // when there is one (only ever true for a single-segment entry);
-        // every later segment is copied in full.
-        let read_len = if i == 0 {
-            length - entry.prefix.len() as u64
-        } else {
-            length
-        };
+    for (offset, read_len) in stored_ranges(entry) {
         file.seek(SeekFrom::Start(offset))
             .map_err(|e| Reason::io(IoAction::Read, archive.display(), e))?;
         copied += std::io::copy(&mut file.take(read_len), &mut out)
@@ -639,6 +623,30 @@ fn collision_key(relative: &Path) -> PathBuf {
     } else {
         relative.to_path_buf()
     }
+}
+
+/// The byte ranges of the archive that hold `entry`'s stored bytes, in
+/// order, as `(offset, length)`.
+///
+/// The first segment's declared length still includes the prefix when there
+/// is one (only ever true for a single-segment entry, and checked to fit by
+/// `out_of_bounds`); every later segment is read in full.
+fn stored_ranges(entry: &Entry) -> impl Iterator<Item = (u64, u64)> + '_ {
+    let prefix = entry.prefix.len() as u64;
+    entry
+        .segments
+        .iter()
+        .enumerate()
+        .map(move |(i, &(offset, length))| {
+            (
+                offset,
+                if i == 0 {
+                    length.saturating_sub(prefix)
+                } else {
+                    length
+                },
+            )
+        })
 }
 
 #[cfg(test)]
