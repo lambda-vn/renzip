@@ -194,19 +194,29 @@ hostile. The short version:
 
 - The index is a Python pickle. Parsed by `serde-pickle`, which reads values
   and never constructs an object the stream asks for, and accepted only in
-  the one shape the format defines.
+  the one shape the format defines. A pass over its opcodes runs first and
+  refuses a container fetched back from the pickle's memo or nested more
+  than 16 levels deep, so a few kilobytes of index can neither multiply into
+  gigabytes nor overflow the stack.
 - Entry paths are sanitised, then the destination is checked on the canonical
   path just before writing. A refused entry is reported and skipped, never
-  fatal to the rest of the extraction.
+  fatal to the rest of the extraction. On Windows and macOS, two entries
+  whose paths differ only by case are reported instead of one overwriting
+  the other.
 - Offsets and lengths are validated against the real file size before
-  anything is allocated, and an entry whose segments add up past what a
-  64-bit length can hold is refused. Nothing loads an archive whole, and a
+  anything is allocated, and an entry whose segments add up to more than the
+  archive itself holds is refused. Nothing loads an archive whole, and a
   length the index announces is only ever a capped hint for a buffer.
+- Opening an entry never runs it without a warning. On Windows the temporary
+  copy is marked as downloaded from the internet, so Windows prompts before
+  running it; on Linux and macOS, scripts, launchers and programs are shown
+  in their folder instead of being opened.
 - The window has no command that takes a path and opens it.
 - `renzip-core` forbids `unsafe` code. The application crate denies it too,
   except for the two calls into the Windows shell that hand a file to the
   desktop.
-- `cargo audit` runs in CI against the dependency tree.
+- `cargo audit` checks the dependency tree. The CI job that ran it on every
+  push is currently disabled: run `cargo audit` locally before a release.
 
 The full policy, and what is deliberately outside it, is in
 [SECURITY.md](SECURITY.md).

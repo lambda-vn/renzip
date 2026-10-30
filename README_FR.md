@@ -202,20 +202,31 @@ comme hostile. En résumé :
 
 - L'index est un pickle Python. Il est analysé par `serde-pickle`, qui lit des
   valeurs et ne construit jamais l'objet que le flux réclame, et n'est accepté
-  que dans la seule forme que définit le format.
+  que dans la seule forme que définit le format. Un passage sur ses opcodes a
+  lieu avant et refuse un conteneur repris dans le mémo du pickle ou imbriqué
+  sur plus de 16 niveaux : quelques kilo-octets d'index ne peuvent ni se
+  démultiplier en gigaoctets ni faire déborder la pile.
 - Les chemins des entrées sont assainis, puis la destination est vérifiée sur
   le chemin canonique juste avant écriture. Une entrée refusée est signalée et
-  ignorée, jamais fatale au reste de l'extraction.
+  ignorée, jamais fatale au reste de l'extraction. Sous Windows et macOS, deux
+  entrées dont les chemins ne diffèrent que par la casse sont signalées au
+  lieu que l'une écrase l'autre.
 - Les offsets et les longueurs sont validés contre la taille réelle du fichier
-  avant toute allocation, et une entrée dont les segments totalisent plus
-  qu'une longueur de 64 bits ne peut contenir est refusée. Rien ne charge une
-  archive en entier, et une longueur annoncée par l'index ne sert jamais qu'à
-  suggérer, plafonnée, la taille d'un tampon.
+  avant toute allocation, et une entrée dont les segments totalisent plus que
+  l'archive elle-même ne contient est refusée. Rien ne charge une archive en
+  entier, et une longueur annoncée par l'index ne sert jamais qu'à suggérer,
+  plafonnée, la taille d'un tampon.
+- Ouvrir une entrée ne l'exécute jamais sans avertissement. Sous Windows, la
+  copie temporaire est marquée comme téléchargée depuis Internet, et Windows
+  demande confirmation avant de l'exécuter ; sous Linux et macOS, les scripts,
+  lanceurs et programmes sont montrés dans leur dossier au lieu d'être ouverts.
 - La fenêtre ne dispose d'aucune commande prenant un chemin pour l'ouvrir.
 - `renzip-core` interdit le code `unsafe`. Le crate de l'application l'interdit
   aussi, à l'exception de deux appels à l'interface Windows qui confient un
   fichier au bureau.
-- `cargo audit` tourne en CI sur l'arbre des dépendances.
+- `cargo audit` vérifie l'arbre des dépendances. Le job de CI qui le lançait à
+  chaque push est actuellement désactivé : lancez `cargo audit` en local avant
+  une release.
 
 La politique complète, et ce qui en est délibérément exclu, se trouve dans
 [SECURITY.md](SECURITY.md).

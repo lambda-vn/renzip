@@ -38,7 +38,12 @@ below follows from that.
   that, `crates/renzip-core/src/index.rs` accepts one shape only, a map
   of strings to lists of two or three element tuples, and treats
   anything else as a malformed archive rather than a case to be clever
-  about.
+  about. Before `serde-pickle` builds anything, `pickle_scan.rs` walks
+  the opcodes and refuses two shapes no real index has: a container
+  fetched back from the memo, which `serde-pickle` would copy out once
+  per fetch (a list of n items fetched n times is n² values out of a few
+  kilobytes), and nesting deeper than 16 levels, which would overflow
+  the stack while the value is converted or dropped.
 
 - **Entry paths, which is where extractors get broken.** `path.rs`
   refuses absolute paths, drive letters, `..` components, Windows
@@ -50,7 +55,10 @@ below follows from that.
   the destination directory. A refused entry does not abort the
   extraction: it is listed in the report and skipped, so one hostile
   path in an archive of forty thousand does not cost you the other
-  thirty-nine thousand nine hundred and ninety-nine.
+  thirty-nine thousand nine hundred and ninety-nine. On Windows and
+  macOS, whose default file systems ignore case, two entries whose paths
+  differ only by case are the same file: the second is reported as
+  already written instead of silently overwriting the first.
 
 - **Symbolic links already on disk.** An archive cannot create one, but
   it can name a path where one already sits, which would let a write
@@ -63,8 +71,12 @@ below follows from that.
   bytes past the end of the file or announce a prefix longer than the
   entry that holds it. Both are validated against the real file size
   when the archive is opened, before anything is allocated or read, and
-  a failing entry is rejected with the numbers it declared. Nothing
-  loads an archive whole: reads are `seek` plus a bounded `take`.
+  a failing entry is rejected with the numbers it declared. An entry
+  made of several segments is refused when they add up to more than the
+  archive holds: listing the same range again and again would otherwise
+  let a small archive announce petabytes for extraction to write.
+  Nothing loads an archive whole: reads are `seek` plus a bounded
+  `take`.
 
 - **Preview.** Text stops at 1 MiB and images at 8 MiB, decided on the
   declared size before the bytes are read. Images are handed to the
@@ -84,7 +96,14 @@ below follows from that.
   two archives holding the same `script.rpyc` cannot overwrite each
   other's copy and you cannot be shown the wrong file. Those
   directories are removed when the archive is closed and when the
-  application exits.
+  application exits. What the copy may do is controlled too. On
+  Windows it is given the `Zone.Identifier` stream a browser writes on
+  a download (zone 3, internet), so SmartScreen, the shell's security
+  prompt and Office's protected view treat it as the download it came
+  from; if the stream cannot be written, the copy is only shown in its
+  folder. On Linux and macOS, which keep no such mark, a script, a
+  launcher or a program (Windows ones included, which Wine would run)
+  is shown in its folder instead of being opened.
 
 - **The window's own capabilities.** The webview is granted
   `core:default`, the file dialogs, and writing text to the clipboard.
@@ -106,4 +125,5 @@ that game's code, which is a decision made outside this application.
 Binaries produced by the build workflow are **not signed**. Windows
 SmartScreen and macOS Gatekeeper will warn about them, and that warning
 means unsigned, not tampered with. Verifying that a download matches
-what the workflow built is on you until signing exists.
+what the workflow built is on you until signing exists; the notes of
+each release list the SHA-256 of every installer for that purpose.
