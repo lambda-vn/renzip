@@ -118,7 +118,7 @@ pub fn build(
 ) -> Result<BuildReport> {
     // Fail on an unwritable version before touching the file system, so that
     // a bad request never leaves a truncated archive behind.
-    let placeholder = header::format_line(version, 0, key)?;
+    header::format_line(version, 0, key)?;
     let key = if version == Version::Rpa2_0 { 0 } else { key };
 
     let temp_path = temp_path_for(dest_path);
@@ -157,18 +157,13 @@ pub fn build(
         files,
         version,
         key,
-        &placeholder,
-        report,
+        &mut report,
         on_progress,
     );
-
-    let report = match outcome {
-        Ok(report) => report,
-        Err(e) => {
-            let _ = std::fs::remove_file(&temp_path);
-            return Err(e);
-        }
-    };
+    if let Err(e) = outcome {
+        let _ = std::fs::remove_file(&temp_path);
+        return Err(e);
+    }
 
     if report.cancelled {
         let _ = std::fs::remove_file(&temp_path);
@@ -182,20 +177,21 @@ pub fn build(
     Ok(report)
 }
 
-/// Write every file into `temp_path`, starting from `placeholder` as the
-/// header. Does not touch `dest_path`: [`build`] moves the temporary file
-/// into place once this returns `Ok` with `cancelled` false.
-#[allow(clippy::too_many_arguments)]
+/// Write every file into `temp_path`, under a placeholder header that is
+/// overwritten with the real index offset at the end, and record what was
+/// stored or skipped in `report`. Does not touch `dest_path`: [`build`]
+/// moves the temporary file into place once this returns `Ok` with
+/// `report.cancelled` false.
 fn write_temp_archive(
     temp_path: &Path,
     source_dir: &Path,
     files: Vec<SourceFile>,
     version: Version,
     key: u32,
-    placeholder: &str,
-    mut report: BuildReport,
+    report: &mut BuildReport,
     on_progress: &mut dyn FnMut(&Progress<'_>) -> bool,
-) -> Result<BuildReport> {
+) -> Result<()> {
+    let placeholder = header::format_line(version, 0, key)?;
     // A leftover from a build that crashed is removed first, and the file is
     // then created only if nothing took its place: opening an existing path
     // would follow a symbolic link planted under this predictable name and
@@ -256,7 +252,7 @@ fn write_temp_archive(
             report.cancelled = true;
             report.entries = 0;
             report.bytes = 0;
-            return Ok(report);
+            return Ok(());
         }
     }
 
@@ -273,7 +269,7 @@ fn write_temp_archive(
         .map_err(|e| Error::io(temp_path, e))?;
     out.flush().map_err(|e| Error::io(temp_path, e))?;
 
-    Ok(report)
+    Ok(())
 }
 
 /// Name of the temporary file `build` writes through before moving it to
