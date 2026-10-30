@@ -251,87 +251,11 @@ async fn open_entry(
     let dest = session.scratch.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
-        // Each entry gets a subfolder of its own: flat by name would let two
-        // entries that share a file name in different archive folders (two
-        // "script.rpy" from two chapters, say) overwrite each other's copy,
-        // since every "open" is its own extraction with no memory of the one
-        // before it. Keying the subfolder on the entry's full archive path
-        // keeps the name flat inside it while different paths never collide,
-        // and reopening the same entry reuses the same file instead of
-        // piling up copies.
-        let entry_dir = dest.join(scratch_subdir(&path));
-        let mut archive = Archive::open(&archive_path).map_err(CommandError::from)?;
-        let report = archive
-            .extract(
-                Selection::Paths(std::slice::from_ref(&path)),
-                &entry_dir,
-                Layout::Flat,
-                &mut |_| true,
-            )
-            .map_err(CommandError::from)?;
-        if let Some(skipped) = report.skipped.first() {
-            return Err(CommandError::EntrySkipped {
-                entry: skipped.path.clone(),
-                reason: skipped.reason.clone(),
-            });
-        }
-
-        // The core names a flat copy after the last component of the
-        // sanitized path, where a backslash separates too: name it the same
-        // way, or "images\bg.png" is looked for where "bg.png" was written.
-        // The extraction above already skipped any path sanitize refuses.
-        let name = renzip_core::path::sanitize(&path)
-            .ok()
-            .and_then(|relative| relative.file_name().map(PathBuf::from))
-            .ok_or_else(|| CommandError::EntrySkipped {
-                entry: path.clone(),
-                reason: renzip_core::Reason::NoFileName,
-            })?;
-        let written = entry_dir.join(name);
-        let location = written.display().to_string();
-
-        // Archives come off the internet, and so does what they hold: the
-        // copy is handed to the desktop only once Windows will warn before
-        // running it as it would for the download, and only if it is not a
-        // script elsewhere. Otherwise it is shown in its folder, never run.
-        let guarded =
-            desktop::mark_downloaded(&written).is_ok() && !desktop::runs_when_opened(&written);
-
-        // What the desktop intends to do decides both whether handing the
-        // file over is worth trying, and what to call the result: an
-        // association pointing at an uninstalled program is skipped rather
-        // than followed into nothing, and one that resolves to the system's
-        // own picker is reported as a picker and not as an application.
-        let association = desktop::association_of(&written);
-        if guarded
-            && !chooser
-            && association != desktop::Association::Dead
-            && app
-                .opener()
-                .open_path(location.clone(), None::<&str>)
-                .is_ok()
-        {
-            return Ok(OpenOutcome {
-                path: location,
-                action: if association == desktop::Association::Picker {
-                    OpenAction::Chooser
-                } else {
-                    OpenAction::Opened
-                },
-            });
-        }
-        if guarded && desktop::choose_application(&written) == desktop::Fallback::Chooser {
-            return Ok(OpenOutcome {
-                path: location,
-                action: OpenAction::Chooser,
-            });
-        }
-        app.opener()
-            .reveal_item_in_dir(&written)
-            .map_err(CommandError::from)?;
+        let written = extract_for_open(&archive_path, &dest, &path)?;
+        let action = hand_over(&app, &written, chooser)?;
         Ok(OpenOutcome {
-            path: location,
-            action: OpenAction::Revealed,
+            path: written.display().to_string(),
+            action,
         })
     })
     .await
@@ -489,6 +413,91 @@ fn scratch_subdir(entry_path: &str) -> String {
     let mut hasher = DefaultHasher::new();
     entry_path.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
+}
+
+/// Extract one entry, flat, into its own subfolder of `scratch`, and return
+/// the path of the copy.
+fn extract_for_open(
+    archive_path: &Path,
+    scratch: &Path,
+    path: &str,
+) -> Result<PathBuf, CommandError> {
+    // Each entry gets a subfolder of its own: flat by name would let two
+    // entries that share a file name in different archive folders (two
+    // "script.rpy" from two chapters, say) overwrite each other's copy,
+    // since every "open" is its own extraction with no memory of the one
+    // before it. Keying the subfolder on the entry's full archive path
+    // keeps the name flat inside it while different paths never collide,
+    // and reopening the same entry reuses the same file instead of
+    // piling up copies.
+    let entry_dir = scratch.join(scratch_subdir(path));
+    let mut archive = Archive::open(archive_path).map_err(CommandError::from)?;
+    let selected = [path.to_string()];
+    let report = archive
+        .extract(
+            Selection::Paths(&selected),
+            &entry_dir,
+            Layout::Flat,
+            &mut |_| true,
+        )
+        .map_err(CommandError::from)?;
+    if let Some(skipped) = report.skipped.first() {
+        return Err(CommandError::EntrySkipped {
+            entry: skipped.path.clone(),
+            reason: skipped.reason.clone(),
+        });
+    }
+
+    // The core names a flat copy after the last component of the
+    // sanitized path, where a backslash separates too: name it the same
+    // way, or "images\bg.png" is looked for where "bg.png" was written.
+    // The extraction above already skipped any path sanitize refuses.
+    let name = renzip_core::path::sanitize(path)
+        .ok()
+        .and_then(|relative| relative.file_name().map(PathBuf::from))
+        .ok_or_else(|| CommandError::EntrySkipped {
+            entry: path.to_string(),
+            reason: renzip_core::Reason::NoFileName,
+        })?;
+    Ok(entry_dir.join(name))
+}
+
+/// Hand an extracted copy to the desktop: open it, offer a chooser for it,
+/// or show it in its folder, and say which one happened.
+fn hand_over(app: &AppHandle, written: &Path, chooser: bool) -> Result<OpenAction, CommandError> {
+    // Archives come off the internet, and so does what they hold: the
+    // copy is handed to the desktop only once Windows will warn before
+    // running it as it would for the download, and only if it is not a
+    // script elsewhere. Otherwise it is shown in its folder, never run.
+    let guarded = desktop::mark_downloaded(written).is_ok() && !desktop::runs_when_opened(written);
+
+    // What the desktop intends to do decides both whether handing the
+    // file over is worth trying, and what to call the result: an
+    // association pointing at an uninstalled program is skipped rather
+    // than followed into nothing, and one that resolves to the system's
+    // own picker is reported as a picker and not as an application.
+    let association = desktop::association_of(written);
+    if guarded
+        && !chooser
+        && association != desktop::Association::Dead
+        && app
+            .opener()
+            .open_path(written.display().to_string(), None::<&str>)
+            .is_ok()
+    {
+        return Ok(if association == desktop::Association::Picker {
+            OpenAction::Chooser
+        } else {
+            OpenAction::Opened
+        });
+    }
+    if guarded && desktop::choose_application(written) == desktop::Fallback::Chooser {
+        return Ok(OpenAction::Chooser);
+    }
+    app.opener()
+        .reveal_item_in_dir(written)
+        .map_err(CommandError::from)?;
+    Ok(OpenAction::Revealed)
 }
 
 /// The .rpa path RenZip was started with, if the desktop handed it one.
