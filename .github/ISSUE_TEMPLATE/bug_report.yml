@@ -38,7 +38,7 @@ body:
         The game or the tool that produced it, if you can say. Never attach
         the archive itself: it holds the assets of a game you probably
         cannot redistribute.
-      placeholder: built by Ren'Py 8.3, or by rpatool
+      placeholder: built by Ren'Py 8.3, or by another tool
   - type: input
     id: os
     attributes:

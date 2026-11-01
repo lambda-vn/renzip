@@ -22,9 +22,9 @@ use crate::reason::{IoAction, Reason};
 /// Key written into an RPA-3.0 header when the caller has no opinion.
 ///
 /// The value is arbitrary: the key obfuscates offsets, it protects nothing.
-/// It is rpatool's default, not Ren'Py's own archiver's - that one always
-/// uses `0x42424242` - kept here as this crate's own default rather than
-/// changed to match, since nothing reads either value as meaningful.
+/// It is not Ren'Py's own archiver's - that one always uses `0x42424242` -
+/// but this crate's own default, since nothing reads either value as
+/// meaningful.
 pub const DEFAULT_KEY: u32 = 0xDEAD_BEEF;
 
 /// One file found under a source directory.

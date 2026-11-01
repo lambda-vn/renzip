@@ -43,8 +43,7 @@ which gives the same key for every header the engine writes.
 
 Sources: `renpy/loader.py`, read from Ren'Py 6.18 to 8.5.3 (`RPAv3ArchiveHandler.read_index`,
 lines 158-182 of the 8.5.3 SDK; the RPA-1.0 handler, lines 216-236). Folding
-extra header words into the key comes from rpatool (commit `5a3b12c`), not
-from the engine.
+extra header words into the key is renzip's choice, not the engine's.
 
 ## What Ren'Py's own archiver writes
 
@@ -105,27 +104,24 @@ SDK). An archive stored inside another archive is never opened.
 These headers come from games shipping a modified loader. Stock Ren'Py reads
 none of them.
 
-- **RPA-3.2**: seen in Zeliria Sanctuary, whose developer confirmed a custom
-  format. The header is `RPA-3.2 <offset> F <key>`, for example
-  `RPA-3.2 000000000058accd F 42424240`; the key is the fourth field
-  (Shizmob/rpatool#9, Lattyware/unrpa#18). renzip reads it.
+- **RPA-3.2**: a custom format. The header is `RPA-3.2 <offset> F <key>`, for
+  example `RPA-3.2 000000000058accd F 42424240`; the `F` is a literal unused
+  field and the key is the fourth field. renzip reads it.
 - **RPA-4.0**: header `RPA-4.0 0000000027d75111 00000042`, the RPA-3.0
-  layout under another name; archives open when read as RPA-3.0
-  (Lattyware/unrpa#22). renzip reads it.
-- **ALT-1.0**: described by unrpa as the key in the second field, XORed with
-  `0xDABE8DF0`, and the offset in the third. It appears in no Ren'Py 6.x
-  release. renzip does not read it.
+  layout under another name; archives open when read as RPA-3.0. renzip
+  reads it.
+- **ALT-1.0**: the key in the second field, XORed with `0xDABE8DF0`, and the
+  offset in the third. It appears in no Ren'Py 6.x release. renzip does not
+  read it.
 - **ZiX-12A and ZiX-12B**: an obfuscation that needs the game's own
   `loader.pyo` to undo. renzip does not read them, by design.
-- **Reported without a sample**: `R4598P5757A 000000009ee33010 42424242`
-  (Lattyware/unrpa#39) and `RPA-9.1 12acac407b5c514d` (Lattyware/unrpa#46).
+- **Reported without a sample**: `R4598P5757A 000000009ee33010 42424242` and
+  `RPA-9.1 12acac407b5c514d`.
 
 ## Sources
 
 - The Ren'Py engine, <https://github.com/renpy/renpy>: `renpy/loader.py`,
   `archiver.py`, `renpy/tools/archiver.py` and `launcher/game/archiver.rpy`
   at the tags named above, and the 8.5.3 SDK (8.5.3.26051504) run locally.
-- Shizmob/rpatool: pull request #9, commit `5a3b12c`.
-- Lattyware/unrpa: issues #18, #22, #39 and #46, pull request #25.
 - The test fixtures in `tests/fixtures/`, including `renpy6-3.0.rpa`, written
   by the archiver of the 6.18.3 SDK under its own Python 2.

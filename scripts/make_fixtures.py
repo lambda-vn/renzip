@@ -46,12 +46,12 @@ def header_line(version: str, offset: int, key: int) -> bytes:
     if version == "RPA-3.0":
         return b"RPA-3.0 %016x %08x\n" % (offset, key)
     if version == "RPA-3.2":
-        # "F" is the literal middle field seen in an actual RPA-3.2 archive
-        # (Zeliria Sanctuary, Shizmob/rpatool#9); it is not a placeholder for
-        # something else, the format just carries an unused field there.
+        # "F" is the literal middle field seen in an actual RPA-3.2 archive;
+        # it is not a placeholder for something else, the format just carries
+        # an unused field there.
         return b"RPA-3.2 %016x F %08x\n" % (offset, key)
     if version == "RPA-4.0":
-        # Same layout as RPA-3.0 (Lattyware/unrpa#22).
+        # Same layout as RPA-3.0.
         return b"RPA-4.0 %016x %08x\n" % (offset, key)
     raise ValueError(f"unknown version {version}")
 
@@ -191,7 +191,7 @@ def main() -> None:
         contents = write_archive(FIXTURES / name, version, plain)
         expected[name] = {"version": version, "entries": encode(contents)}
 
-    # Seen only in games with a modified loader (Lattyware/unrpa#22), never in
+    # Seen only in games with a modified loader, never in
     # a stock Ren'Py install; the key there is small (0x42), unlike the other
     # fixtures' DEFAULT_KEY.
     contents = write_archive(FIXTURES / "basic-4.0.rpa", "RPA-4.0", plain, key=0x42)

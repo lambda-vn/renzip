@@ -4,8 +4,8 @@
 //! official renpy/renpy repository, every tag from 6.18 to 8.5.3): for
 //! RPA-3.0 the engine reads the key from a single field, `int(l[25:33], 16)`,
 //! and nowhere folds several header words together. Folding every remaining
-//! whitespace-separated hex word into the key by XOR is rpatool's behavior
-//! (commit 5a3b12c, 2016), not the engine's; it is kept here anyway; a
+//! whitespace-separated hex word into the key by XOR is renzip's choice,
+//! not the engine's; a
 //! single-subkey header still parses the same way, and it is what lets an
 //! RPA-3.2 header (one extra field before the key) parse without a special
 //! case beyond starting the fold one word later.
@@ -150,8 +150,8 @@ mod tests {
 
     #[test]
     fn rpa_3_2_skips_the_extra_field() {
-        // "F" is the literal middle field seen in an actual RPA-3.2 archive
-        // (Zeliria Sanctuary, Shizmob/rpatool#9), not a placeholder.
+        // "F" is the literal middle field seen in an actual RPA-3.2 archive,
+        // not a placeholder.
         let header = parse_line("RPA-3.2 0000000000000010 F deadbeef").unwrap();
         assert_eq!(header.version, Version::Rpa3_2);
         assert_eq!(header.index_offset, 0x10);
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn parses_rpa_4_0_like_rpa_3_0() {
-        // Real header seen in the wild (Lattyware/unrpa#22).
+        // Real header seen in the wild.
         let header = parse_line("RPA-4.0 0000000027d75111 00000042").unwrap();
         assert_eq!(header.version, Version::Rpa4_0);
         assert_eq!(header.index_offset, 0x27d7_5111);
