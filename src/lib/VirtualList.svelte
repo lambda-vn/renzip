@@ -117,6 +117,7 @@
   aria-activedescendant={activeDescendant}
   tabindex="0"
   class="h-full overflow-y-auto focus:outline-none"
+  style="scrollbar-gutter:stable"
 >
   <div style="height: {items.length * rowHeight}px; position: relative;">
     <div

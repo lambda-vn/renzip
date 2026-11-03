@@ -115,14 +115,15 @@
         </div>
 
         <div
-          class="text-muted flex shrink-0 items-center px-4.5 py-2 text-[11px] font-semibold uppercase"
-          style="letter-spacing:0.08em;border-bottom:1px solid var(--color-divider)"
+          class="text-muted flex shrink-0 items-center gap-2 overflow-y-hidden px-4.5 py-2 text-[11px] font-semibold uppercase"
+          style="letter-spacing:0.08em;border-bottom:1px solid var(--color-divider);scrollbar-gutter:stable"
           aria-hidden="true"
         >
+          <!-- Same gap as a row, and the same room kept for the list's
+               scrollbar, so the headings sit over their cells either way. -->
           <span class="flex-1">{t("browse.column.name")}</span>
-          <span class="w-20">{t("browse.column.type")}</span>
+          <span class="w-28">{t("browse.column.type")}</span>
           <span class="w-28 text-right">{t("browse.column.size")}</span>
-          <span class="w-32 text-right">{t("browse.column.offset")}</span>
         </div>
 
         <div class="min-h-0 flex-1">

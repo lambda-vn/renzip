@@ -59,14 +59,12 @@ const MESSAGES = {
   "browse.column.name": { fr: "Nom", en: "Name" },
   "browse.column.type": { fr: "Type", en: "Type" },
   "browse.column.size": { fr: "Taille", en: "Size" },
-  "browse.column.offset": { fr: "Offset", en: "Offset" },
   "browse.noMatch": {
     fr: "Aucun fichier ne correspond à la recherche.",
     en: "No file matches the search.",
   },
   "browse.emptyArchive": { fr: "Cette archive est vide.", en: "This archive is empty." },
   "browse.tree": { fr: "Contenu de l'archive", en: "Archive content" },
-  "browse.folder": { fr: "dossier", en: "folder" },
   "browse.folderAria": { fr: "Dossier {name}", en: "Folder {name}" },
   "browse.extracted": {
     fr: "{size} extraits · archive de {file}",

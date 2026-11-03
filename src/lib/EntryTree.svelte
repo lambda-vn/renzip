@@ -441,9 +441,8 @@
         </button>
         <Icon name="folder" size={15} stroke={1.7} style="flex:none;opacity:.75" />
         <span class="flex-1 truncate" title={item.key}>{item.name}</span>
-        <span class="text-muted w-20">{t("browse.folder")}</span>
+        <span class="text-muted w-28">{tn("count.file", item.count)}</span>
         <span class="nums w-28 text-right">{formatSize(item.size)}</span>
-        <span class="nums text-muted w-32 text-right">{tn("count.file", item.count)}</span>
       {:else}
         <span class="size-3.5 flex-none"></span>
         <Icon
@@ -453,11 +452,8 @@
           style="flex:none;opacity:.75"
         />
         <span class="flex-1 truncate" title={item.key}>{item.name}</span>
-        <span class="text-muted w-20">{typeLabel(item.key)}</span>
+        <span class="text-muted w-28">{typeLabel(item.key)}</span>
         <span class="nums w-28 text-right">{formatSize(item.entry.size)}</span>
-        <span class="nums text-muted w-32 text-right">
-          0x{item.entry.offset.toString(16).toUpperCase().padStart(8, "0")}
-        </span>
       {/if}
     </div>
   {/snippet}
