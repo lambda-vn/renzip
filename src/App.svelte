@@ -15,7 +15,7 @@
   import TitleBar from "./lib/TitleBar.svelte";
   import { launchPath, onProgress } from "./lib/api";
   import { describeError, describeReason, formatSize } from "./lib/format";
-  import { t, tn } from "./lib/i18n.svelte";
+  import { t } from "./lib/i18n.svelte";
   import { app } from "./lib/store.svelte";
   import BrowseView from "./lib/views/BrowseView.svelte";
   import CreateView from "./lib/views/CreateView.svelte";
@@ -30,6 +30,9 @@
         ? t("title.settings")
         : undefined,
   );
+
+  // BrowseView draws its own bar only once an archive is open.
+  let statusInBrowseBar = $derived(app.view === "browse" && app.archive !== null);
 
   let percent = $derived(
     app.progress && app.progress.total > 0
@@ -314,7 +317,16 @@
     {/if}
   </main>
 
-  <footer class="bar-bottom shrink-0 px-4.5 py-2.5 text-[12px]">
+  <!-- Bar chrome only when there is something to say, so the browse view keeps a
+       single status bar (its own). The live region below stays mounted either
+       way: it must exist before its text changes to be announced. -->
+  <footer
+    class="shrink-0 text-[12px] {app.progress ||
+    app.skipped.length > 0 ||
+    (app.status && !statusInBrowseBar)
+      ? 'bar-bottom px-4.5 py-2.5'
+      : ''}"
+  >
     {#if app.progress}
       <div class="mb-2 flex items-center gap-3.5">
         <div
@@ -338,16 +350,17 @@
       </div>
     {/if}
 
-    <p aria-live="polite" class="m-0 flex min-h-5 items-center gap-1.5">
+    <!-- On a browse screen with an archive the text is drawn in BrowseView's bar
+         (aria-hidden there), so this region is the only one announcing it. -->
+    <p
+      aria-live="polite"
+      class={statusInBrowseBar ? "sr-only" : `m-0 flex items-center gap-1.5 ${app.status ? "min-h-5" : ""}`}
+    >
       {#if app.status}
         {#if app.status.tone === "warn"}
           <Icon name="warning" size={13} style="flex:none" label={t("status.warnLabel")} />
         {/if}
         <span class={app.status.tone === "warn" ? "text-warn" : ""}>{app.status.text}</span>
-      {:else if app.archive && app.view === "browse"}
-        <span class="text-muted">
-          {app.archive.version} · {tn("count.entry", app.archive.entry_count)}
-        </span>
       {/if}
     </p>
 

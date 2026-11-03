@@ -231,8 +231,11 @@ const MESSAGES = {
   "glyph.text": { fr: "Fichier texte", en: "Text file" },
   "glyph.binary": { fr: "Données binaires", en: "Binary data" },
 
-  "status.archiveOpened": { fr: "{name} ouverte.", en: "{name} opened." },
   "status.copied": { fr: "Nom copié : {name}", en: "Name copied: {name}" },
+  "status.partlyReadable": {
+    fr: "Archive partiellement lisible : certaines entrées sont refusées.",
+    en: "Archive partly readable: some entries are refused.",
+  },
   "status.opened": { fr: "Ouvert depuis {path}", en: "Opened from {path}" },
   "status.chooser": {
     fr: "Aucune application associée : choisissez-en une pour {path}",

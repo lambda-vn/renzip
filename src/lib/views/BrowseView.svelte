@@ -140,21 +140,39 @@
     </div>
 
     <div class="bar-bottom nums flex h-11 shrink-0 items-center gap-3.5 px-4.5 text-[12px]">
-      <span>{tn("count.entry", app.archive.entry_count)}</span>
-      <span class="divider-x my-4"></span>
-      <span>
-        {t("browse.extracted", {
+      <span
+        class="shrink-0"
+        title={t("browse.extracted", {
           size: formatSize(app.archive.total_size),
           file: formatSize(app.archive.file_size),
         })}
+      >
+        {tn("count.entry", app.archive.entry_count)}
+      </span>
+      <span class="divider-x my-4"></span>
+      <!-- Always rendered so the bar keeps its shape; announced once, by the
+           always-mounted live region in App.svelte. -->
+      <span
+        class="flex min-w-0 flex-1 items-center gap-1.5 {app.status?.tone === 'warn'
+          ? 'text-warn'
+          : ''}"
+        title={app.status?.text}
+        aria-hidden="true"
+      >
+        {#if app.status}
+          {#if app.status.tone === "warn"}
+            <Icon name="warning" size={13} style="flex:none" />
+          {/if}
+          <span class="truncate">{app.status.text}</span>
+        {/if}
       </span>
       {#if app.selectionSize > 0}
-        <span class="divider-x my-4"></span>
-        <span class="text-accent">
+        <span class="text-accent shrink-0">
           {tn("count.checked", app.selectionSize)} · {formatSize(app.selection.size)}
         </span>
+        <span class="divider-x my-4"></span>
       {/if}
-      <div class="ml-auto flex items-center gap-2">
+      <div class="flex shrink-0 items-center gap-2">
         <span class="tag tag-outline">{app.archive.version}</span>
         {#if app.archive.rejected.length === 0}
           <span class="tag tag-accent">{t("browse.indexValid")}</span>

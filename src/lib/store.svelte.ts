@@ -232,7 +232,8 @@ class AppStore {
       this.current = null;
       this.preview = null;
       this.skipped = summary.rejected;
-      this.status = openedStatus(summary, t("status.archiveOpened", { name: summary.name }));
+      // The title bar, the tree and the bar's tag already say it opened.
+      this.status = openedStatus(summary, null);
     } catch (error) {
       this.archive = null;
       this.entries = [];
@@ -481,6 +482,8 @@ class AppStore {
       return;
     }
 
+    // The previous message would otherwise sit next to the new progress bar.
+    this.status = null;
     this.skipped = [];
     this.progress = null;
     try {
@@ -553,6 +556,7 @@ class AppStore {
     }
 
     this.busy = true;
+    this.status = null;
     this.skipped = [];
     this.progress = null;
     try {
@@ -687,16 +691,20 @@ async function warnAboutSkippedArchives(skipped: Rejection[]): Promise<void> {
 export const app = new AppStore();
 
 /**
- * Status to show once an archive was opened or reopened: what it refused,
- * or `text` when it refused nothing.
+ * Status to show once an archive was opened or reopened.
+ *
+ * A damaged archive always gets a warning: the browse bar's tag says how many
+ * entries were refused, but only the status line reaches a screen reader.
+ * The warning does not repeat that count, which the tag already shows.
  *
  * @param summary - The archive just opened.
- * @param text - What to say when every entry was kept.
+ * @param text - What to say when every entry was kept, or null for nothing.
  */
-function openedStatus(summary: ArchiveSummary, text: string): Status {
-  return summary.rejected.length > 0
-    ? { tone: "warn", text: tn("count.rejected", summary.rejected.length) }
-    : { tone: "info", text };
+function openedStatus(summary: ArchiveSummary, text: string | null): Status | null {
+  if (summary.rejected.length > 0) {
+    return { tone: "warn", text: t("status.partlyReadable") };
+  }
+  return text === null ? null : { tone: "info", text };
 }
 
 /**
