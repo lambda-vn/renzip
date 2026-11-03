@@ -2,13 +2,14 @@
   /**
    * The single list of the main window: folders and files in one tree.
    *
-   * A folder unfolds in place, its files sit under it, and a tick box on any
-   * row builds the extraction selection: ticking a folder takes everything
-   * below it. Only the visible rows are in the DOM, so an archive of fifty
-   * thousand entries scrolls as well as one of ten.
+   * A folder unfolds in place, its files sit under it, and the selection
+   * works like a file manager's: click, Ctrl+click and Shift+click pick rows,
+   * and the tick box of a row is a Ctrl+click on it. Selecting a folder takes
+   * everything below it. Only the visible rows are in the DOM, so an archive
+   * of fifty thousand entries scrolls as well as one of ten.
    *
-   * Follows the ARIA tree pattern: arrows walk and unfold, space ticks, and
-   * the rows are never focused themselves (RGAA 7.1, 12.x).
+   * Follows the ARIA tree pattern: arrows walk, unfold and select, space
+   * ticks, and the rows are never focused themselves (RGAA 7.1, 12.x).
    */
   import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
@@ -20,7 +21,7 @@
   import { t, tn } from "./i18n.svelte";
   import { glyphOf, typeLabel } from "./kinds";
   import { app } from "./store.svelte";
-  import { descendants, navigate, type TreeRow } from "./tree";
+  import { navigate, parentOf, type TreeRow } from "./tree";
 
   type Props = {
     /** Extract these entries, asking for a destination if none is set. */
@@ -34,6 +35,12 @@
 
   let list = $state<ReturnType<typeof VirtualList> | undefined>();
   let active = $state(0);
+  /**
+   * Key of the row a Shift range starts from: the last one picked without
+   * Shift. A key, not an index, because a fold, a search or another archive
+   * moves every index under it.
+   */
+  let anchor: string | null = null;
   let menu = $state<{ x: number; y: number; label: string; items: MenuItem[] } | null>(null);
 
   let rows = $derived(app.rows);
@@ -64,18 +71,81 @@
     return picked >= row.count ? "on" : "part";
   }
 
+  // Another archive: nothing of the old tree is worth keeping, and the list
+  // component stays mounted across the switch.
+  $effect(() => {
+    void app.archive?.path;
+    anchor = null;
+    active = 0;
+  });
+
   /**
-   * Act on a click on a row: unfold a folder, or show a file.
+   * Select rows the way a file manager does, and show a file.
+   *
+   * A plain pick makes the row the whole selection, an additive one toggles
+   * it, a range one selects everything between the anchor and the row. The
+   * anchor only moves when the pick is not a range, so that shifting twice
+   * from the same row re-draws the range instead of chaining.
+   *
+   * @param index - Index of the row among the visible ones.
+   * @param range - Select from the anchor to the row (Shift).
+   * @param additive - Keep the rest of the selection (Ctrl or Cmd).
+   */
+  function pick(index: number, range: boolean, additive: boolean): void {
+    const row = rows[index];
+    // Read before the move: the anchor falls back to the active row, which
+    // is the one before this pick, not the row being picked.
+    const from = range ? anchorIndex() : index;
+    active = index;
+    if (range) {
+      app.selectRows(rows.slice(Math.min(from, index), Math.max(from, index) + 1), !additive);
+    } else if (additive) {
+      app.toggleRow(row);
+      anchor = row.key;
+    } else {
+      app.selectRows([row], true);
+      anchor = row.key;
+    }
+    if (row.kind === "file") {
+      void app.show(row.entry);
+    }
+  }
+
+  /**
+   * Where the anchor is now among the visible rows.
+   *
+   * A row folded away or filtered out falls back to the nearest folder above
+   * it that is still shown, then to the active row, so that a range never
+   * starts from a stale position.
+   */
+  function anchorIndex(): number {
+    if (anchor !== null) {
+      let key = anchor;
+      for (;;) {
+        const found = rows.findIndex((row) => row.key === key);
+        if (found !== -1) {
+          return found;
+        }
+        if (key === "") {
+          break;
+        }
+        key = parentOf(key);
+      }
+    }
+    return active;
+  }
+
+  /**
+   * Open a file with the desktop, or fold and unfold a folder.
    *
    * @param index - Index of the row among the visible ones.
    */
-  function activate(index: number): void {
+  function open(index: number): void {
     const row = rows[index];
-    active = index;
-    if (row.kind === "dir") {
-      app.toggleFolder(row.key);
+    if (row.kind === "file") {
+      void openTemporaryCopy(row.key, false);
     } else {
-      void app.show(row.entry);
+      app.toggleFolder(row.key);
     }
   }
 
@@ -97,11 +167,18 @@
     }
     event.preventDefault();
     if (next !== null) {
-      active = next;
       list?.scrollToIndex(next);
-      const target = rows[next];
-      if (target.kind === "file") {
-        void app.show(target.entry);
+      if (event.shiftKey) {
+        pick(next, true, event.ctrlKey || event.metaKey);
+      } else if (event.ctrlKey || event.metaKey) {
+        // Ctrl walks without touching the selection, like in a file manager.
+        active = next;
+        const target = rows[next];
+        if (target.kind === "file") {
+          void app.show(target.entry);
+        }
+      } else {
+        pick(next, false, false);
       }
     }
   }
@@ -117,6 +194,13 @@
     switch (event.key) {
       case " ":
         app.toggleRow(row);
+        anchor = row.key;
+        return true;
+      case "Escape":
+        if (app.selected.size === 0) {
+          return false;
+        }
+        app.selected.clear();
         return true;
       case "Enter":
         if (row.kind === "file") {
@@ -165,13 +249,6 @@
     return answer;
   }
 
-  /** Entry paths a row stands for: itself, or everything under it. */
-  function pathsOf(row: TreeRow): string[] {
-    return row.kind === "file"
-      ? [row.key]
-      : descendants(app.tree, row.key).map((entry) => entry.path);
-  }
-
   /**
    * Open the row menu.
    *
@@ -181,13 +258,18 @@
    * @param y - Same, vertically.
    */
   async function openMenu(index: number, x: number, y: number): Promise<void> {
-    active = index;
     const row = rows[index];
+    // Right clicking outside the selection retargets it, inside keeps it, so
+    // that "Extract" always acts on what the highlighted rows say.
+    if (ticked(row) !== "on") {
+      pick(index, false, false);
+    }
+    active = index;
     const items: MenuItem[] = [
       {
         label: t("menu.extract"),
         icon: "download",
-        action: () => onextract(pathsOf(row)),
+        action: () => onextract([...app.selected]),
       },
       {
         label: t("menu.copy"),
@@ -300,9 +382,22 @@
       aria-checked={ticked(item) === "on" ? "true" : ticked(item) === "part" ? "mixed" : "false"}
       aria-expanded={item.kind === "dir" ? item.open : undefined}
       aria-label={label(item)}
-      class="row rounded-none px-4.5 {index === active ? 'row-active' : ''}"
+      class="row rounded-none px-4.5 select-none {ticked(item) === 'on' ? 'row-selected' : ''} {index === active ? 'row-active' : ''}"
       style="height:{ROW_HEIGHT}px;padding-left:{18 + item.depth * 16}px"
-      onclick={() => activate(index)}
+      onclick={(event) => pick(index, event.shiftKey, event.ctrlKey || event.metaKey)}
+      onmousedown={(event) => {
+        // A click must not move the focus onto the row: the row leaves the
+        // DOM once scrolled away, and the keyboard would go with it.
+        event.preventDefault();
+        list?.focus();
+      }}
+      ondblclick={(event) => {
+        // The tick box and the chevron have their own click; their double
+        // click is two more of those, not an "open".
+        if (!(event.target as Element).closest("button")) {
+          open(index);
+        }
+      }}
       oncontextmenu={(event) => {
         event.preventDefault();
         void openMenu(index, event.clientX, event.clientY);
@@ -320,7 +415,7 @@
         data-state={ticked(item)}
         onclick={(event) => {
           event.stopPropagation();
-          app.toggleRow(item);
+          pick(index, event.shiftKey, true);
         }}
       >
         {#if ticked(item) === "on"}

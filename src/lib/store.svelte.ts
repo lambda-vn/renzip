@@ -343,10 +343,41 @@ class AppStore {
     }
   }
 
-  /** Put every entry of the archive in the selection. */
+  /**
+   * Put every entry of the archive in the selection, or only the rows a
+   * search leaves on screen: "all" is what the user sees.
+   */
   selectAll(): void {
+    if (this.filter.trim() !== "") {
+      this.selectRows(this.rows, true);
+      return;
+    }
     for (const entry of this.entries) {
       this.selected.add(entry.path);
+    }
+  }
+
+  /**
+   * Make the selection exactly these rows, or add them to it.
+   *
+   * A folder stands for every file below it, as ticking it does. Rows may
+   * overlap (an open folder and its own files): the set absorbs the repeats.
+   *
+   * @param rows - Rows to select.
+   * @param replace - Drop the current selection first.
+   */
+  selectRows(rows: TreeRow[], replace: boolean): void {
+    if (replace) {
+      this.selected.clear();
+    }
+    for (const row of rows) {
+      if (row.kind === "file") {
+        this.selected.add(row.key);
+      } else {
+        for (const entry of descendants(this.tree, row.key)) {
+          this.selected.add(entry.path);
+        }
+      }
     }
   }
 

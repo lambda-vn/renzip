@@ -616,7 +616,7 @@
   /* A ticked row is tinted, not filled: hundreds of them at once would turn
      the list into a block of accent colour. The strong fill is kept for the
      one row the keyboard sits on, through .row-active. */
-  .row[aria-selected="true"] {
+  .row-selected {
     background: var(--color-accent-100);
   }
   .row-active {

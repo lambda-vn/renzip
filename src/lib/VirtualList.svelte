@@ -78,6 +78,11 @@
   let last = $derived(Math.min(items.length, first + visible));
   let slice = $derived(items.slice(first, last));
 
+  /** Put the focus back on the tree itself, where the keyboard lives. */
+  export function focus(): void {
+    viewport?.focus();
+  }
+
   /**
    * Bring a row into view, scrolling as little as possible.
    *
