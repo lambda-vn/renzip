@@ -46,6 +46,7 @@ const MESSAGES = {
     en: "Search the archive paths",
   },
   "browse.open": { fr: "Ouvrir", en: "Open" },
+  "browse.openArchive": { fr: "Ouvrir une archive…", en: "Open an archive…" },
   "browse.create": { fr: "Nouvelle archive", en: "New archive" },
   "browse.welcome": {
     fr: "Ouvrez une archive .rpa, ou déposez-en une sur la fenêtre.",

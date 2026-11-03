@@ -652,6 +652,7 @@ class AppStore {
     saveSettings(this.settings);
     if (patch.language) {
       setLanguage(patch.language);
+      this.status = null;
     }
     if (patch.defaultVersion) {
       this.version = patch.defaultVersion;

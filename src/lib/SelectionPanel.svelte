@@ -255,7 +255,7 @@
 
     <button
       type="button"
-      class="btn btn-primary btn-block"
+      class="btn btn-block {target.length > 0 ? 'btn-primary' : 'btn-secondary'}"
       style="min-height:42px"
       disabled={app.busy || target.length === 0}
       onclick={() => onextract(target)}
@@ -265,11 +265,12 @@
     </button>
     <button
       type="button"
-      class="btn btn-secondary btn-block"
-      style="margin-top:0"
+      class="btn btn-block {target.length > 0 ? 'btn-secondary' : 'btn-primary'}"
+      style="margin-top:0;min-height:42px"
       disabled={app.busy || !app.archive}
       onclick={() => onextract(null)}
     >
+      <Icon name="download" size={15} />
       {t("panel.extractAll", { count: tn("count.file", app.archive?.entry_count ?? 0) })}
     </button>
   </div>

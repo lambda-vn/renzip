@@ -79,7 +79,7 @@
       </button>
       <button
         type="button"
-        class="btn btn-primary"
+        class="btn btn-secondary"
         onclick={() => (app.view = "create")}
         disabled={app.busy}
       >
@@ -90,8 +90,12 @@
   </div>
 
   {#if !app.archive}
-    <div class="flex min-h-0 flex-1 items-center justify-center p-10">
+    <div class="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 p-10">
       <p class="text-muted max-w-100 text-center text-[13px]">{t("browse.welcome")}</p>
+      <button type="button" class="btn btn-primary" onclick={onopen} disabled={app.busy}>
+        <Icon name="archive" size={15} />
+        {t("browse.openArchive")}
+      </button>
     </div>
   {:else}
     <div class="flex min-h-0 flex-1">
