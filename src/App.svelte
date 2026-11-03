@@ -108,26 +108,31 @@
   /**
    * Take what was dropped on the window.
    *
-   * An .rpa is opened; anything else is tried as a directory to pack, which
-   * is also how a directory is told apart from a file here, since the drop
-   * only carries paths. Creation packs a single directory tree (unwanted
-   * parts are dropped afterward, once it is staged), so more than one path
-   * dropped at once - several files, several folders, or a mix - is refused
-   * with an explanation rather than silently packing only the first one.
+   * One item at a time. A single .rpa (matched case-insensitively) is
+   * opened; any other single path is tried as a directory to pack, which is
+   * also how a directory is told apart from a file here, since the drop only
+   * carries paths. The window holds one archive and creation packs a single
+   * directory tree (unwanted parts are dropped afterward, once it is staged),
+   * so more than one path dropped at once - several archives, several
+   * folders, or a mix, an .rpa among other files included - is refused with
+   * an explanation rather than silently using only one of them.
    *
    * @param paths - What the drop carried.
    */
   async function receive(paths: string[]): Promise<void> {
-    const archive = paths.find((path) => path.toLowerCase().endsWith(".rpa"));
-    if (archive) {
-      await app.load(archive);
-      return;
-    }
     if (paths.length === 0) {
       return;
     }
     if (paths.length > 1) {
-      app.status = { tone: "warn", text: t("create.drop.multiple") };
+      const hasArchive = paths.some((path) => path.toLowerCase().endsWith(".rpa"));
+      app.status = {
+        tone: "warn",
+        text: t(hasArchive ? "open.drop.multiple" : "create.drop.multiple"),
+      };
+      return;
+    }
+    if (paths[0].toLowerCase().endsWith(".rpa")) {
+      await app.load(paths[0]);
       return;
     }
     if (await app.stage(paths[0])) {

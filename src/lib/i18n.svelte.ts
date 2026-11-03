@@ -145,7 +145,11 @@ const MESSAGES = {
   },
   "create.drop.multiple": {
     fr: "Déposez un seul dossier : celui qui contient tout ce que vous voulez empaqueter. Ce qui ne doit pas y figurer peut être retiré une fois le dossier chargé.",
-    en: "Drop a single folder: the one containing everything you want to pack. Anything that should not be in it can be dropped once the folder is loaded.",
+    en: "Drop a single folder: the one containing everything you want to pack. Anything that should not be in it can be removed once the folder is loaded.",
+  },
+  "open.drop.multiple": {
+    fr: "Déposez une seule archive à la fois : RenZip en ouvre une par fenêtre.",
+    en: "Drop one archive at a time: RenZip opens one per window.",
   },
   "create.archivesSkipped.title": { fr: "Fichiers ignorés", en: "Files skipped" },
   "create.archivesSkipped.body": {
