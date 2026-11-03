@@ -2,11 +2,10 @@
   /**
    * Right hand panel of the main window.
    *
-   * A file clicked in the list is shown in full. With nothing clicked but
-   * boxes ticked, what the selection adds up to is shown instead, since
-   * rendering one file out of forty says nothing about the other thirty-nine.
-   * The two never fight: ticking is done with the boxes, inspecting with a
-   * click on the row.
+   * It always describes what the extraction button will take, which is the
+   * selection. One file is shown in full; several, or a folder, are added up
+   * instead, since rendering one file out of forty says nothing about the
+   * other thirty-nine. An empty selection shows a hint.
    */
   import Icon from "./Icon.svelte";
   import type { BinaryReason } from "./api";
@@ -25,18 +24,33 @@
 
   let { onextract, onpickdest }: Props = $props();
 
-  let entry = $derived(app.current);
-  let many = $derived(!entry && app.selectionSize > 0);
+  /** The file described in full: only ever the selection's one file. */
+  let entry = $derived(
+    app.selectionSize === 1 ? (app.byPath.get([...app.selected][0]) ?? null) : null,
+  );
+  let many = $derived(app.selectionSize > 1);
   let glyph = $derived(entry ? glyphOf(entry.path) : null);
 
+  /**
+   * Keep the loaded preview on that file.
+   *
+   * A click already shows its row, so this only acts when the selection
+   * moved some other way (a folder, Escape, a toggle that left one file).
+   */
+  $effect(() => {
+    if (entry && app.current?.path !== entry.path) {
+      void app.show(entry);
+    }
+  });
+
   /** Entries the main extraction button acts on. */
-  let target = $derived(app.selectionSize > 0 ? [...app.selected] : entry ? [entry.path] : []);
+  let target = $derived([...app.selected]);
 
   /** Wording of that button, which says exactly what it will take. */
   let buttonLabel = $derived(
     app.selectionSize > 1
       ? t("panel.extract.many", { n: app.selectionSize })
-      : app.selectionSize === 1 || entry
+      : app.selectionSize === 1
         ? t("panel.extract.one")
         : t("panel.extract.none"),
   );

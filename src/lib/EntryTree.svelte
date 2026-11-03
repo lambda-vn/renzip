@@ -106,7 +106,8 @@
       app.selectRows([row], true);
       anchor = row.key;
     }
-    if (row.kind === "file") {
+    // Only the selection's one file is shown; the panel covers the other cases.
+    if (row.kind === "file" && app.selectionSize === 1 && app.selected.has(row.key)) {
       void app.show(row.entry);
     }
   }
@@ -173,10 +174,6 @@
       } else if (event.ctrlKey || event.metaKey) {
         // Ctrl walks without touching the selection, like in a file manager.
         active = next;
-        const target = rows[next];
-        if (target.kind === "file") {
-          void app.show(target.entry);
-        }
       } else {
         pick(next, false, false);
       }
@@ -204,6 +201,9 @@
         return true;
       case "Enter":
         if (row.kind === "file") {
+          // Make it the selection first: the panel only shows the selected file.
+          app.selectRows([row], true);
+          anchor = row.key;
           void app.show(row.entry, true);
         } else {
           app.toggleFolder(row.key);
