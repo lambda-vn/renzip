@@ -171,12 +171,25 @@
     return false;
   }
 
-  /** Ask where an extraction should write, defaulting to the last one picked. */
+  /** Parent of a folder path, keeping the separator of a drive or filesystem root. */
+  function parentFolder(path: string): string {
+    const parent = path.replace(/[\\/][^\\/]*[\\/]?$/, "");
+    return /^[A-Za-z]:$/.test(parent) || parent === "" ? path.slice(0, parent.length + 1) : parent;
+  }
+
+  /**
+   * Ask where an extraction should write.
+   *
+   * The dialog opens on the parent of the current destination: the default
+   * one does not exist until the first extraction, and a dialog pointed at a
+   * missing folder falls back to wherever it was last. The folder itself is
+   * then right there in the list.
+   */
   async function chooseDestDir(): Promise<boolean> {
     const chosen = await open({
       directory: true,
       title: t("dialog.extractTo"),
-      defaultPath: app.destDir || undefined,
+      defaultPath: parentFolder(app.destDir) || undefined,
     });
     if (typeof chosen === "string") {
       app.destDir = chosen;
@@ -186,10 +199,9 @@
   }
 
   /**
-   * Extract entries right away, always asking where to.
+   * Extract entries right away into the destination the panel shows.
    *
-   * Every archive can go somewhere different, so the destination is never
-   * assumed from a previous extraction; the dialog just opens on it.
+   * The folder is only asked for when there is none to show.
    *
    * @param paths - Entries to extract, or null for the whole archive.
    */
@@ -197,7 +209,7 @@
     if (paths !== null && paths.length === 0) {
       return;
     }
-    if (!(await chooseDestDir())) {
+    if (app.destDir === "" && !(await chooseDestDir())) {
       return;
     }
     await app.runExtraction(paths);

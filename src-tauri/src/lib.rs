@@ -513,6 +513,38 @@ fn launch_path(state: State<'_, LaunchPath>) -> Option<String> {
     state.0.clone()
 }
 
+/// Tell whether an extraction destination already holds something.
+///
+/// The window asks before extracting into such a folder, since the files
+/// that share a name with an entry would be replaced. A folder that does not
+/// exist yet holds nothing. The path is the one the user chose, never one
+/// built from the archive.
+#[tauri::command]
+async fn destination_has_entries(path: String) -> Result<bool, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let invalid = |error: Option<String>| {
+            CommandError::from(renzip_core::Error::InvalidDestination {
+                path: PathBuf::from(&path),
+                error,
+            })
+        };
+        match std::fs::metadata(&path) {
+            Ok(meta) if meta.is_dir() => {}
+            Ok(_) => return Err(invalid(None)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+            Err(e) => return Err(invalid(Some(e.to_string()))),
+        }
+        let mut entries = std::fs::read_dir(&path).map_err(|e| invalid(Some(e.to_string())))?;
+        match entries.next() {
+            None => Ok(false),
+            Some(Ok(_)) => Ok(true),
+            Some(Err(e)) => Err(invalid(Some(e.to_string()))),
+        }
+    })
+    .await
+    .map_err(CommandError::from)?
+}
+
 /// Pick the .rpa path out of the command line, if the desktop opened one.
 ///
 /// Double-clicking a file, or using "Open with" on one, starts this process
@@ -548,6 +580,7 @@ pub fn run() {
             build_archive,
             cancel_build,
             launch_path,
+            destination_has_entries,
         ])
         .build(tauri::generate_context!())
     {

@@ -240,6 +240,14 @@ const MESSAGES = {
     en: "No application is associated with this type: the folder was opened on {path}",
   },
   "status.cancelled": { fr: ", interrompu", en: ", interrupted" },
+  "status.extractedTo": { fr: " dans {path}.", en: " to {path}." },
+  "extract.overwrite.title": { fr: "Dossier non vide", en: "Folder is not empty" },
+  "extract.overwrite.body": {
+    fr: "Le dossier « {path} » contient déjà des fichiers. Ceux qui portent le même nom seront remplacés. Extraire quand même ?",
+    en: "The folder “{path}” already contains files. Those with the same name will be replaced. Extract anyway?",
+  },
+  "extract.overwrite.ok": { fr: "Extraire", en: "Extract" },
+  "extract.overwrite.cancel": { fr: "Annuler", en: "Cancel" },
   "status.warnLabel": { fr: "Attention", en: "Warning" },
   "status.refreshed": { fr: "Archive actualisée.", en: "Archive refreshed." },
   "status.built": {

@@ -6,7 +6,7 @@
  * through props.
  */
 
-import { message } from "@tauri-apps/plugin-dialog";
+import { ask, message } from "@tauri-apps/plugin-dialog";
 import { SvelteSet } from "svelte/reactivity";
 
 import {
@@ -14,6 +14,7 @@ import {
   cancelBuild,
   cancelExtraction,
   closeArchive,
+  destinationHasEntries,
   extract,
   listEntries,
   openArchive,
@@ -87,7 +88,7 @@ class AppStore {
   destPath = $state("");
   /** Version the archive being created will announce. */
   version = $state<string>("RPA-3.0");
-  /** Where an extraction will write. */
+  /** Where an extraction will write, prefilled per archive and editable. */
   destDir = $state("");
   /** Whether an extraction keeps the archive folders. */
   layout = $state<Layout>("Tree");
@@ -217,6 +218,11 @@ class AppStore {
   async #open(path: string): Promise<void> {
     try {
       const { summary, entries } = await this.#reopen(path);
+      // A folder picked for this very archive survives a reopen; any other
+      // archive starts from its own default, never from the previous one's.
+      if (this.archive?.path !== summary.path || this.destDir === "") {
+        this.destDir = defaultDestination(summary.path);
+      }
       this.entries = entries;
       this.archive = summary;
       this.view = "browse";
@@ -450,7 +456,31 @@ class AppStore {
       return;
     }
 
+    // Every extraction goes through here and no dialog precedes it anymore,
+    // so this is the one place that stops a click from silently replacing
+    // the files of a folder that already holds some. Busy from here on: the
+    // buttons stay live while the question is open otherwise, and a second
+    // click would stack a second dialog and a second extraction.
     this.busy = true;
+    try {
+      if (
+        (await destinationHasEntries(this.destDir)) &&
+        !(await ask(t("extract.overwrite.body", { path: this.destDir }), {
+          title: t("extract.overwrite.title"),
+          kind: "warning",
+          okLabel: t("extract.overwrite.ok"),
+          cancelLabel: t("extract.overwrite.cancel"),
+        }))
+      ) {
+        this.busy = false;
+        return;
+      }
+    } catch (error) {
+      this.status = { tone: "warn", text: describeError(error) };
+      this.busy = false;
+      return;
+    }
+
     this.skipped = [];
     this.progress = null;
     try {
@@ -461,7 +491,8 @@ class AppStore {
         text:
           `${tn("count.extracted", report.extracted)} (${formatSize(report.bytes)})` +
           `${report.cancelled ? t("status.cancelled") : ""}` +
-          `${report.skipped.length > 0 ? `, ${tn("count.ignored", report.skipped.length)}` : ""}.`,
+          `${report.skipped.length > 0 ? `, ${tn("count.ignored", report.skipped.length)}` : ""}` +
+          t("status.extractedTo", { path: this.destDir }),
       };
     } catch (error) {
       this.status = { tone: "warn", text: describeError(error) };
@@ -663,4 +694,30 @@ function openedStatus(summary: ArchiveSummary, text: string): Status {
   return summary.rejected.length > 0
     ? { tone: "warn", text: tn("count.rejected", summary.rejected.length) }
     : { tone: "info", text };
+}
+
+/**
+ * Where an archive extracts by default: a folder named after it, next to it.
+ *
+ * Built from the archive's own path, with the separator it already uses, and
+ * never from anything the archive contains. Ren'Py loads every script found
+ * anywhere under game/, so for an archive kept there the folder goes beside
+ * game/ instead: extracted .rpy files next to their archive would load twice.
+ *
+ * @param archivePath - Native path of the .rpa file.
+ */
+function defaultDestination(archivePath: string): string {
+  const cut = Math.max(archivePath.lastIndexOf("/"), archivePath.lastIndexOf("\\"));
+  let folder = archivePath.slice(0, cut + 1);
+  const file = archivePath.slice(cut + 1);
+  // Nothing stripped, or nothing left, would name the archive itself.
+  const stem = file.replace(/(?<=.)\.[^.]*$/, "");
+  const name = stem === file || stem === "" ? `${file.replace(/^\./, "")}_extracted` : stem;
+
+  const parent = folder.slice(0, -1);
+  const above = Math.max(parent.lastIndexOf("/"), parent.lastIndexOf("\\"));
+  if (parent.slice(above + 1).toLowerCase() === "game") {
+    folder = parent.slice(0, above + 1);
+  }
+  return `${folder}${name}`;
 }

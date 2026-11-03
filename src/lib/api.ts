@@ -271,3 +271,8 @@ export function onProgress(
     handler(event.payload),
   );
 }
+
+/** Whether a directory exists and already holds something, which an extraction would overwrite. */
+export function destinationHasEntries(path: string): Promise<boolean> {
+  return invoke<boolean>("destination_has_entries", { path });
+}
