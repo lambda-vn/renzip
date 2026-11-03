@@ -116,8 +116,11 @@ const MESSAGES = {
   "panel.extract.many": { fr: "Extraire ces {n} fichiers", en: "Extract these {n} files" },
   "panel.extractAll": { fr: "Tout extraire ({count})", en: "Extract everything ({count})" },
 
-  "create.drop.title": { fr: "Déposez vos fichiers ici", en: "Drop your files here" },
-  "create.drop.titleActive": { fr: "Relâchez pour ajouter", en: "Release to add" },
+  "create.drop.title": { fr: "Déposez un dossier ici", en: "Drop a folder here" },
+  "create.drop.titleActive": {
+    fr: "Relâchez pour utiliser ce dossier",
+    en: "Release to use this folder",
+  },
   "create.pick": { fr: "Choisir un dossier…", en: "Choose a folder…" },
   "create.staged": { fr: "Contenu préparé", en: "Staged content" },
   "create.version": { fr: "Version RPA", en: "RPA version" },
@@ -399,8 +402,8 @@ const MESSAGES = {
     en: "Unreadable source folder, {path}: {error}",
   },
   "error.invalid_source.not_a_directory": {
-    fr: "La source {path} n'est pas un dossier.",
-    en: "The source {path} is not a folder.",
+    fr: "{path} n'est pas un dossier : déposez le dossier à empaqueter, ou une archive .rpa à ouvrir.",
+    en: "{path} is not a folder: drop the folder to pack, or an .rpa archive to open.",
   },
   "error.unsupported_write_version": {
     fr: "Impossible d'écrire une archive en version {version}.",

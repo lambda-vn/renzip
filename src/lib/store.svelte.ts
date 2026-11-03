@@ -506,12 +506,13 @@ class AppStore {
    * Read a directory and stage it on the creation screen.
    *
    * @param dir - Directory to pack.
+   * @returns Whether it was staged; a refusal keeps the previous source.
    */
-  async stage(dir: string): Promise<void> {
+  async stage(dir: string): Promise<boolean> {
     // A drop reaches here during a build too, whose excludes this resets.
     if (this.busy) {
       this.status = { tone: "warn", text: t("status.busy") };
-      return;
+      return false;
     }
     try {
       const report = await scanDirectory(dir);
@@ -526,9 +527,11 @@ class AppStore {
         )}).`,
       };
       await warnAboutSkippedArchives(report.skipped);
+      return true;
     } catch (error) {
-      this.source = null;
+      // The folder staged before stays: a wrong drop is no reason to lose it.
       this.status = { tone: "warn", text: describeError(error) };
+      return false;
     }
   }
 

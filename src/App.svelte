@@ -127,8 +127,7 @@
       app.status = { tone: "warn", text: t("create.drop.multiple") };
       return;
     }
-    await app.stage(paths[0]);
-    if (app.source) {
+    if (await app.stage(paths[0])) {
       app.view = "create";
     }
   }
